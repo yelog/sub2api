@@ -24,7 +24,10 @@ echo "tar: $TAR_PATH"
 cd "$REPO_DIR"
 docker build --network host --platform "$PLATFORM" -t "$IMAGE_TAG" .
 docker save "$IMAGE_TAG" | gzip -c > "$TAR_PATH"
-sha256sum "$TAR_PATH" > "${TAR_PATH}.sha256"
+(
+  cd "$(dirname "$TAR_PATH")"
+  sha256sum "$(basename "$TAR_PATH")" > "$(basename "$TAR_PATH").sha256"
+)
 
 echo "built image tar: $TAR_PATH"
 echo "checksum: ${TAR_PATH}.sha256"
