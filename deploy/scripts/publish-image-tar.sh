@@ -23,6 +23,6 @@ $SCP_BIN -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/nu
   "$TAR_PATH" "${TAR_PATH}.sha256" "$VPS:$REMOTE_IMAGES_DIR/"
 $SCP_BIN -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ProxyCommand=none \
   "$REPO_DIR/deploy/docker-compose.vps.yml" "$REPO_DIR/deploy/scripts/deploy-image-tar.sh" "$VPS:/tmp/"
-$SSH_CMD "$VPS" "set -e; install -m 644 /tmp/docker-compose.vps.yml /opt/sub2api/deploy/docker-compose.vps.yml; install -m 755 /tmp/deploy-image-tar.sh '$REMOTE_SCRIPTS_DIR/deploy-image-tar.sh'; sha256sum -c '$REMOTE_IMAGES_DIR/${TAR_NAME}.sha256'; '$REMOTE_SCRIPTS_DIR/deploy-image-tar.sh' '$REMOTE_IMAGES_DIR/$TAR_NAME' '$IMAGE_TAG'"
+$SSH_CMD "$VPS" "set -e; install -m 644 /tmp/docker-compose.vps.yml /opt/sub2api/deploy/docker-compose.vps.yml; install -m 755 /tmp/deploy-image-tar.sh '$REMOTE_SCRIPTS_DIR/deploy-image-tar.sh'; cd '$REMOTE_IMAGES_DIR'; sha256sum -c '${TAR_NAME}.sha256'; '$REMOTE_SCRIPTS_DIR/deploy-image-tar.sh' '$REMOTE_IMAGES_DIR/$TAR_NAME' '$IMAGE_TAG'"
 
 echo "published: $IMAGE_TAG"
