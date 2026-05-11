@@ -22,7 +22,7 @@ echo "platform: $PLATFORM"
 echo "tar: $TAR_PATH"
 
 cd "$REPO_DIR"
-docker build --platform "$PLATFORM" -t "$IMAGE_TAG" .
+docker build --network host --platform "$PLATFORM" -t "$IMAGE_TAG" .
 docker save "$IMAGE_TAG" | gzip -c > "$TAR_PATH"
 sha256sum "$TAR_PATH" > "${TAR_PATH}.sha256"
 
