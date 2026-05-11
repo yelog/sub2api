@@ -29,7 +29,9 @@ RUN pnpm install --frozen-lockfile
 
 # Copy frontend source and build
 COPY frontend/ ./
-RUN pnpm run build
+# Keep Docker image builds lightweight on VPS: typecheck should run in CI/dev,
+# production image build only needs compiled frontend assets.
+RUN pnpm exec vite build
 
 # -----------------------------------------------------------------------------
 # Stage 2: Backend Builder
