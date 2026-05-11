@@ -2,6 +2,39 @@
 
 This directory contains files for deploying Sub2API on Linux servers.
 
+## Semi-Automated VPS Workflow for `yelog/sub2api`
+
+For the `xrouter.uk` production workflow, use these paths on the VPS:
+
+- Repo checkout: `/opt/sub2api/repo`
+- Runtime deploy dir: `/opt/sub2api/deploy`
+- Scripts dir: `/opt/sub2api/scripts`
+- Runtime env: `/opt/sub2api/deploy/.env`
+
+Recommended bootstrap and release flow:
+
+```bash
+# first-time bootstrap on VPS
+mkdir -p /opt/sub2api
+if [ ! -d /opt/sub2api/repo/.git ]; then
+  git clone https://github.com/yelog/sub2api.git /opt/sub2api/repo
+fi
+bash /opt/sub2api/repo/deploy/scripts/bootstrap-vps.sh
+
+# normal release after pushing to GitHub
+/opt/sub2api/scripts/deploy.sh
+
+# rollback to a known commit
+/opt/sub2api/scripts/rollback.sh <commit>
+```
+
+Compose files used by the VPS workflow:
+
+- Base: `docker-compose.local.yml`
+- Override: `docker-compose.vps.yml`
+
+The override switches `sub2api` from the upstream image to a VPS-local build of `yelog/sub2api`.
+
 ## Deployment Methods
 
 | Method | Best For | Setup Wizard |

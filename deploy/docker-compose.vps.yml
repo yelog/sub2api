@@ -1,0 +1,6 @@
+services:
+  sub2api:
+    image: yelog/sub2api:local
+    build:
+      context: ../repo
+      dockerfile: Dockerfile
