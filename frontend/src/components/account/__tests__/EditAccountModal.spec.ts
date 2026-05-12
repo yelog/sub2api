@@ -115,8 +115,8 @@ const SelectStub = defineComponent({
   `
 })
 
-function buildAccount() {
-  return {
+function buildAccount(overrides: Record<string, any> = {}) {
+  const base = {
     id: 1,
     name: 'OpenAI Key',
     notes: '',
@@ -138,6 +138,13 @@ function buildAccount() {
     group_ids: [],
     expires_at: null,
     auto_pause_on_expired: false
+  }
+
+  return {
+    ...base,
+    ...overrides,
+    credentials: overrides.credentials ?? base.credentials,
+    extra: overrides.extra ?? base.extra
   } as any
 }
 
@@ -236,5 +243,64 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.codex_image_generation_bridge).toBe(true)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('codex_image_generation_bridge_enabled')
+  })
+
+  it('shows and rehydrates model restrictions for Copilot OAuth accounts', async () => {
+    const account = buildAccount({
+      name: 'Copilot OAuth',
+      platform: 'copilot',
+      type: 'oauth',
+      credentials: {
+        access_token: 'gho-test',
+        model_mapping: {
+          'gpt-5.4': 'gpt-5.4'
+        }
+      }
+    })
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    expect(wrapper.text()).toContain('admin.accounts.modelWhitelist')
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('gpt-5.4')
+
+    await wrapper.get('[data-testid="rewrite-to-snapshot"]').trigger('click')
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('gpt-5.2-2025-12-11')
+
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('gpt-5.4')
+  })
+
+  it('saves Copilot OAuth model mapping from edit modal', async () => {
+    const account = buildAccount({
+      name: 'Copilot OAuth',
+      platform: 'copilot',
+      type: 'oauth',
+      credentials: {
+        access_token: 'gho-test',
+        model_mapping: {
+          'gpt-5.4': 'gpt-5.4'
+        }
+      }
+    })
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('[data-testid="rewrite-to-snapshot"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gpt-5.2-2025-12-11': 'gpt-5.2-2025-12-11'
+    })
   })
 })
