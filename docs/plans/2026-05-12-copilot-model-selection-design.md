@@ -1,57 +1,77 @@
-# GitHub Copilot Model Selection Design
+# Copilot Account Model Selection Fix Design
 
-## Problem
+## Background
 
-When creating an account and selecting `GitHub Copilot`, the form does not show model selection. Users cannot restrict the Copilot account to specific supported models.
+GitHub Copilot OAuth accounts can select models during creation, but the account edit modal does not show a model restriction section. The account test modal also lists only a few Claude models instead of the models selected for the Copilot account.
 
-Root causes:
+## Root Cause
 
-- `frontend/src/components/account/CreateAccountModal.vue` has model restriction UI for API key, Bedrock, Antigravity, and OpenAI OAuth, but not for Copilot OAuth.
-- `frontend/src/composables/useModelWhitelist.ts` has no Copilot model list and no `getModelsByPlatform('copilot')` branch.
-- Without a Copilot branch, generic model helpers fall back to Claude models, which would be incorrect for Copilot.
+The Copilot model flow is only partially wired:
+
+- `CreateAccountModal.vue` renders a Copilot OAuth model restriction section and persists the selected models to `credentials.model_mapping`.
+- `EditAccountModal.vue` renders an OAuth model restriction section only for OpenAI OAuth accounts, so Copilot OAuth accounts cannot view or update their saved mapping.
+- `AccountHandler.GetAvailableModels` has branches for OpenAI, Gemini, Antigravity, and Anthropic. Copilot accounts fall through to the Anthropic OAuth branch and return `claude.DefaultModels`.
+- Account testing posts the selected `model_id`, but Copilot currently follows the Claude test path. Mapping-mode tests must resolve the requested model through the account mapping before calling the upstream Copilot-compatible endpoint.
 
 ## Goals
 
-- Show a model whitelist selector after users choose `GitHub Copilot` in the add-account form.
-- List curated GitHub Copilot supported models.
-- Persist the selected models into `credentials.model_mapping` using the existing whitelist/mapping mechanism.
-- Avoid changing backend APIs unless required.
+- Treat Copilot as a first-class platform in the account model-selection flow.
+- Preserve the existing creation behavior.
+- Add edit-time model restriction UI and persistence for Copilot OAuth accounts.
+- Make test model lists reflect the Copilot account's saved model mapping.
+- Avoid changing unrelated OpenAI, Gemini, Anthropic, Antigravity, or Bedrock behavior.
 
-## Non-goals
+## Proposed Approach
 
-- Do not dynamically fetch GitHub Copilot `/models` during account creation. At this point the OAuth token may not exist yet.
-- Do not redesign the model restriction component.
-- Do not change existing OpenAI, Gemini, Anthropic, Antigravity, or Bedrock behavior.
+Use the same `credentials.model_mapping` convention already used by account creation:
 
-## Approach
+- In the frontend edit modal, add a Copilot OAuth model restriction block using `ModelWhitelistSelector` with `platform="copilot"`.
+- Reuse the existing whitelist/mapping state shape: `allowedModels`, `modelMappings`, and `modelRestrictionMode`.
+- On edit modal initialization, load Copilot `credentials.model_mapping` exactly like OpenAI OAuth: all `from === to` means whitelist mode; otherwise mapping mode.
+- On submit, persist Copilot OAuth `model_mapping` into credentials. Empty mapping means no restriction and removes the field.
+- In the backend model-list endpoint, add a Copilot branch before Anthropic fallback. Return mapping keys when configured; otherwise return a curated Copilot default model list.
+- In account testing, apply `account.GetMappedModel` for Copilot OAuth before sending the test request so mapping mode tests hit the actual upstream model.
 
-Use the existing frontend model restriction mechanism:
+## Backend Data Shape
 
-1. Add `copilotModels` in `frontend/src/composables/useModelWhitelist.ts`.
-2. Return `copilotModels` from `getModelsByPlatform('copilot')`.
-3. Add a Copilot OAuth model restriction block to `CreateAccountModal.vue`, parallel to the existing OpenAI OAuth block.
-4. When completing Copilot OAuth account creation, build `credentials.model_mapping` from `modelRestrictionMode`, `allowedModels`, and `modelMappings`.
-5. Add tests for the model helper and the add-account form behavior.
+Copilot model restrictions continue to use:
 
-## Initial Copilot model list
+```json
+{
+  "credentials": {
+    "model_mapping": {
+      "requested-model": "actual-upstream-model"
+    }
+  }
+}
+```
 
-Curated list:
+Whitelist mode is represented as identity mappings:
 
-- `gpt-4.1`
-- `gpt-4o`
-- `gpt-4o-mini`
-- `gpt-5`
-- `gpt-5-mini`
-- `gpt-5.1`
-- `gpt-5.1-codex`
-- `claude-sonnet-4`
-- `claude-opus-4.1`
-- `gemini-2.5-pro`
+```json
+{
+  "gpt-5.4": "gpt-5.4",
+  "claude-sonnet-4.5": "claude-sonnet-4.5"
+}
+```
 
-This can be updated later if Copilot model support changes.
+## Copilot Default Models
 
-## Testing
+Add a backend Copilot default model list matching the frontend curated Copilot list in `useModelWhitelist.ts`. This ensures `/api/v1/admin/accounts/:id/models` can return Copilot models even when no mapping exists.
 
-- Add/extend unit tests for `useModelWhitelist.ts` to verify Copilot model list and no Claude fallback.
-- Add/extend component test for `CreateAccountModal.vue` to verify Copilot renders model selection.
-- Run targeted tests, typecheck, lint, and whitespace checks.
+## Testing Plan
+
+- Backend unit tests for `GetAvailableModels`:
+  - Copilot OAuth with `model_mapping` returns mapping keys.
+  - Copilot OAuth without `model_mapping` returns Copilot defaults and not Claude defaults.
+- Backend unit test for account testing:
+  - Copilot mapping mode resolves requested model to actual mapped model before test dispatch.
+- Frontend unit tests:
+  - `EditAccountModal` shows model restriction controls for Copilot OAuth.
+  - It loads Copilot identity mapping as whitelist selections.
+  - It saves updated Copilot model restrictions to `credentials.model_mapping`.
+  - `AccountTestModal` continues to render models returned by the backend for Copilot accounts.
+
+## Rollout / Risk
+
+Risk is low because changes are scoped to `platform === 'copilot'` branches and reuse existing model-mapping conventions. The main compatibility concern is keeping backend Copilot defaults synchronized with the frontend list; tests should catch regressions around fallback behavior.
