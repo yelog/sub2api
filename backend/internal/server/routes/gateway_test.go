@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newGatewayRoutesTestRouter() *gin.Engine {
+func newGatewayRoutesTestRouter(groupPlatform string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
@@ -28,7 +29,7 @@ func newGatewayRoutesTestRouter() *gin.Engine {
 			groupID := int64(1)
 			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
 				GroupID: &groupID,
-				Group:   &service.Group{Platform: service.PlatformOpenAI},
+				Group:   &service.Group{Platform: groupPlatform},
 			})
 			c.Next()
 		}),
@@ -43,7 +44,7 @@ func newGatewayRoutesTestRouter() *gin.Engine {
 }
 
 func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {
-	router := newGatewayRoutesTestRouter()
+	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
 
 	for _, path := range []string{
 		"/v1/responses/compact",
@@ -56,24 +57,57 @@ func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, req)
-		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI responses handler", path)
+		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit responses handler", path)
 	}
 }
 
 func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
-	router := newGatewayRoutesTestRouter()
+	for _, groupPlatform := range []string{service.PlatformOpenAI, service.PlatformAnthropic, service.PlatformGemini, ""} {
+		t.Run(fmt.Sprintf("group_platform_%s", groupPlatform), func(t *testing.T) {
+			router := newGatewayRoutesTestRouter(groupPlatform)
 
-	for _, path := range []string{
-		"/v1/images/generations",
-		"/v1/images/edits",
-		"/images/generations",
-		"/images/edits",
-	} {
-		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gpt-image-2","prompt":"draw a cat"}`))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
+			for _, path := range []string{
+				"/v1/images/generations",
+				"/v1/images/edits",
+				"/images/generations",
+				"/images/edits",
+			} {
+				req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gpt-image-2","prompt":"draw a cat"}`))
+				req.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
 
-		router.ServeHTTP(w, req)
-		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI images handler", path)
+				router.ServeHTTP(w, req)
+				require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI images handler", path)
+			}
+		})
+	}
+}
+
+func TestGatewayRoutesDoNotDependOnGroupPlatform(t *testing.T) {
+	for _, groupPlatform := range []string{service.PlatformOpenAI, service.PlatformAnthropic, service.PlatformGemini, ""} {
+		t.Run(fmt.Sprintf("group_platform_%s", groupPlatform), func(t *testing.T) {
+			router := newGatewayRoutesTestRouter(groupPlatform)
+			paths := []struct {
+				method string
+				path   string
+				body   string
+			}{
+				{http.MethodPost, "/v1/messages", `{"model":"claude","max_tokens":1,"messages":[]}`},
+				{http.MethodPost, "/v1/messages/count_tokens", `{"model":"claude","messages":[]}`},
+				{http.MethodPost, "/v1/chat/completions", `{"model":"gpt-5","messages":[]}`},
+				{http.MethodPost, "/chat/completions", `{"model":"gpt-5","messages":[]}`},
+				{http.MethodPost, "/v1/responses", `{"model":"gpt-5","input":"ok"}`},
+				{http.MethodPost, "/responses", `{"model":"gpt-5","input":"ok"}`},
+			}
+
+			for _, tc := range paths {
+				req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+
+				router.ServeHTTP(w, req)
+				require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should not be rejected by group platform", tc.path)
+			}
+		})
 	}
 }
