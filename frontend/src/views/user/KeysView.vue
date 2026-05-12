@@ -930,7 +930,7 @@
       @close="closeUseKeyModal"
     />
 
-    <!-- CCS Client Selection Dialog for Antigravity -->
+    <!-- CCS Client Selection Dialog -->
     <BaseDialog
       :show="showCcsClientSelect"
       :title="t('keys.ccsClientSelect.title')"
@@ -940,34 +940,22 @@
       <div class="space-y-4">
         <p class="text-sm text-gray-600 dark:text-gray-400">
           {{ t('keys.ccsClientSelect.description') }}
-	        </p>
-	        <div class="grid grid-cols-2 gap-3">
-	          <button
-	            @click="handleCcsClientSelect('claude')"
-	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
-	          >
-	            <Icon name="terminal" size="xl" class="text-gray-600 dark:text-gray-400" />
-	            <span class="font-medium text-gray-900 dark:text-white">{{
-	              t('keys.ccsClientSelect.claudeCode')
-	            }}</span>
-	            <span class="text-xs text-gray-500 dark:text-gray-400">{{
-	              t('keys.ccsClientSelect.claudeCodeDesc')
-	            }}</span>
-	          </button>
-	          <button
-	            @click="handleCcsClientSelect('gemini')"
-	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
-	          >
-	            <Icon name="sparkles" size="xl" class="text-gray-600 dark:text-gray-400" />
-	            <span class="font-medium text-gray-900 dark:text-white">{{
-	              t('keys.ccsClientSelect.geminiCli')
-	            }}</span>
-	            <span class="text-xs text-gray-500 dark:text-gray-400">{{
-	              t('keys.ccsClientSelect.geminiCliDesc')
-	            }}</span>
-	          </button>
-	        </div>
-	      </div>
+        </p>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            v-for="option in ccsClientOptions"
+            :key="option.type"
+            @click="handleCcsClientSelect(option.type)"
+            class="flex flex-col items-start gap-2 p-4 rounded-xl border-2 border-gray-200 text-left dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
+          >
+            <span class="flex items-center gap-2">
+              <Icon :name="option.icon" size="xl" class="text-gray-600 dark:text-gray-400" />
+              <span class="font-medium text-gray-900 dark:text-white">{{ t(option.labelKey) }}</span>
+            </span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">{{ t(option.descriptionKey) }}</span>
+          </button>
+        </div>
+      </div>
       <template #footer>
         <div class="flex justify-end">
           <button @click="closeCcsClientSelect" class="btn btn-secondary">
@@ -1045,7 +1033,7 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
+import { ref, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
 	import { useAppStore } from '@/stores/app'
 	import { useOnboardingStore } from '@/stores/onboarding'
@@ -1152,6 +1140,21 @@ const publicSettings = ref<PublicSettings | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
+
+const ccsClientOptions: Array<{
+  type: CcSwitchClientType
+  icon: 'terminal' | 'sparkles'
+  labelKey: string
+  descriptionKey: string
+}> = [
+  { type: 'claude', icon: 'terminal', labelKey: 'keys.ccsClientSelect.claudeCode', descriptionKey: 'keys.ccsClientSelect.claudeCodeDesc' },
+  { type: 'codex', icon: 'terminal', labelKey: 'keys.ccsClientSelect.codexCli', descriptionKey: 'keys.ccsClientSelect.codexCliDesc' },
+  { type: 'gemini', icon: 'sparkles', labelKey: 'keys.ccsClientSelect.geminiCli', descriptionKey: 'keys.ccsClientSelect.geminiCliDesc' },
+  { type: 'opencode', icon: 'terminal', labelKey: 'keys.ccsClientSelect.opencode', descriptionKey: 'keys.ccsClientSelect.opencodeDesc' },
+  { type: 'openclaw', icon: 'terminal', labelKey: 'keys.ccsClientSelect.openclaw', descriptionKey: 'keys.ccsClientSelect.openclawDesc' },
+  { type: 'antigravity', icon: 'sparkles', labelKey: 'keys.ccsClientSelect.antigravity', descriptionKey: 'keys.ccsClientSelect.antigravityDesc' },
+  { type: 'copilot', icon: 'terminal', labelKey: 'keys.ccsClientSelect.copilotCli', descriptionKey: 'keys.ccsClientSelect.copilotCliDesc' }
+]
 let abortController: AbortController | null = null
 
 // Get the currently selected key for group change
@@ -1691,17 +1694,8 @@ const resetRateLimitUsage = async () => {
 }
 
 const importToCcswitch = (row: ApiKey) => {
-  const platform = row.group?.platform || 'anthropic'
-
-  // For antigravity platform, show client selection dialog
-  if (platform === 'antigravity') {
-    pendingCcsRow.value = row
-    showCcsClientSelect.value = true
-    return
-  }
-
-  // For other platforms, execute directly
-  executeCcsImport(row, platform === 'gemini' ? 'gemini' : 'claude')
+  pendingCcsRow.value = row
+  showCcsClientSelect.value = true
 }
 
 const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
