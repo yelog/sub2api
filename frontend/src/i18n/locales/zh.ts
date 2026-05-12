@@ -3710,6 +3710,25 @@ export default {
           validateAndCreate: '验证并创建账号',
           pleaseEnterRefreshToken: '请输入 Refresh Token',
           failedToValidateRT: '验证 Refresh Token 失败'
+        },
+        // Copilot specific
+        copilot: {
+          title: 'GitHub Copilot 账户授权',
+          followSteps: '请按照以下步骤完成 GitHub Copilot 账户授权：',
+          step1GenerateUrl: '生成设备授权链接',
+          generateAuthUrl: '生成设备授权链接',
+          step2OpenUrl: '打开 GitHub 设备授权页并完成授权',
+          openUrlDesc: '请在新标签页打开 GitHub 设备授权页面，输入下方 User Code 并确认授权。',
+          step3EnterCode: '确认设备授权状态',
+          authCodeDesc: '完成 GitHub 授权后，无需粘贴回调链接，直接点击下方按钮轮询授权结果。',
+          authCode: 'User Code',
+          authCodePlaceholder: 'GitHub Copilot 设备授权无需粘贴回调链接',
+          authCodeHint: '在 GitHub 页面输入上方 User Code 后，返回这里点击“完成授权”。',
+          userCode: 'User Code',
+          deviceFlowOnly: '仅支持 GitHub 设备码 OAuth 授权',
+          failedToStartDeviceFlow: '发起 GitHub Copilot 设备授权失败',
+          missingDeviceCode: '缺少 device_code，请重新发起授权',
+          failedToPollDeviceFlow: '轮询 GitHub Copilot 授权结果失败'
         }
       },
       // Gemini specific (platform-wide)
@@ -3846,24 +3865,6 @@ export default {
           limited: '限流 {time}',
           now: '现在'
         },
-        copilot: {
-          title: 'GitHub Copilot 账户授权',
-          followSteps: '请按照以下步骤完成 GitHub Copilot 账户授权：',
-          step1GenerateUrl: '生成设备授权链接',
-          generateAuthUrl: '生成设备授权链接',
-          step2OpenUrl: '打开 GitHub 设备授权页并完成授权',
-          openUrlDesc: '请在新标签页打开 GitHub 设备授权页面，输入下方 User Code 并确认授权。',
-          step3EnterCode: '确认设备授权状态',
-          authCodeDesc: '完成 GitHub 授权后，无需粘贴回调链接，直接点击下方按钮轮询授权结果。',
-          authCode: 'User Code',
-          authCodePlaceholder: 'GitHub Copilot 设备授权无需粘贴回调链接',
-          authCodeHint: '在 GitHub 页面输入上方 User Code 后，返回这里点击“完成授权”。',
-          userCode: 'User Code',
-          deviceFlowOnly: '仅支持 GitHub 设备码 OAuth 授权',
-          failedToStartDeviceFlow: '发起 GitHub Copilot 设备授权失败',
-          missingDeviceCode: '缺少 device_code，请重新发起授权',
-          failedToPollDeviceFlow: '轮询 GitHub Copilot 授权结果失败'
-        }
       },
       // Re-Auth Modal
       reAuthorizeAccount: '重新授权账号',
