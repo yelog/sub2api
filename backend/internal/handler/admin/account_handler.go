@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/copilot"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -1897,6 +1898,37 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 			}
 			if !found {
 				models = append(models, openai.Model{
+					ID:          requestedModel,
+					Object:      "model",
+					Type:        "model",
+					DisplayName: requestedModel,
+				})
+			}
+		}
+		response.Success(c, models)
+		return
+	}
+
+	// Handle GitHub Copilot accounts
+	if account.Platform == service.PlatformCopilot {
+		mapping := account.GetModelMapping()
+		if len(mapping) == 0 {
+			response.Success(c, copilot.DefaultModels)
+			return
+		}
+
+		var models []copilot.Model
+		for requestedModel := range mapping {
+			var found bool
+			for _, dm := range copilot.DefaultModels {
+				if dm.ID == requestedModel {
+					models = append(models, dm)
+					found = true
+					break
+				}
+			}
+			if !found {
+				models = append(models, copilot.Model{
 					ID:          requestedModel,
 					Object:      "model",
 					Type:        "model",
