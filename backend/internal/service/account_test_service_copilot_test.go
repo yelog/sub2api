@@ -46,7 +46,8 @@ func TestAccountTestService_TestAccountConnection_CopilotAppliesModelMapping(t *
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{
-			"access_token": "copilot-token",
+			"github_access_token": "github-token",
+			"copilot_token":       "copilot-token",
 			"model_mapping": map[string]any{
 				"gpt-5.4": "claude-sonnet-4.5",
 			},
@@ -66,6 +67,36 @@ func TestAccountTestService_TestAccountConnection_CopilotAppliesModelMapping(t *
 	require.NoError(t, err)
 	require.NotNil(t, upstream.lastReq)
 	require.Equal(t, "claude-sonnet-4.5", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "Bearer copilot-token", upstream.lastReq.Header.Get("Authorization"))
 	require.Contains(t, rec.Body.String(), `"model":"claude-sonnet-4.5"`)
 	require.Contains(t, rec.Body.String(), `"type":"test_complete"`)
+}
+
+func TestAccountTestService_TestAccountConnection_CopilotMissingToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	account := Account{
+		ID:          8,
+		Name:        "copilot-oauth-missing-token",
+		Platform:    PlatformCopilot,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{},
+	}
+	upstream := &copilotTestHTTPUpstream{}
+	svc := &AccountTestService{
+		accountRepo:  stubOpenAIAccountRepo{accounts: []Account{account}},
+		httpUpstream: upstream,
+	}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/8/test", bytes.NewReader(nil))
+
+	err := svc.TestAccountConnection(c, account.ID, "gpt-5.4", "", AccountTestModeDefault)
+	require.NoError(t, err)
+	require.Nil(t, upstream.lastReq)
+	require.Contains(t, rec.Body.String(), "No Copilot token available")
 }
