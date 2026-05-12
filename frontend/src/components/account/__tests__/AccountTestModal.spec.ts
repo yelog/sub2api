@@ -78,7 +78,7 @@ const TextAreaStub = defineComponent({
   `
 })
 
-function buildAccount() {
+function buildAccount(overrides: Record<string, any> = {}) {
   return {
     id: 1,
     name: 'OpenAI OAuth',
@@ -90,7 +90,8 @@ function buildAccount() {
     concurrency: 1,
     priority: 1,
     proxy_id: null,
-    auto_pause_on_expired: false
+    auto_pause_on_expired: false,
+    ...overrides
   } as any
 }
 
@@ -146,5 +147,49 @@ describe('AccountTestModal', () => {
       model_id: 'gpt-5.4',
       mode: 'compact'
     })
+  })
+
+  it('loads Copilot account test models from the available-models endpoint', async () => {
+    getAvailableModelsMock.mockResolvedValue([
+      { id: 'gpt-5.4', display_name: 'GPT-5.4' },
+      { id: 'claude-sonnet-4.5', display_name: 'Claude Sonnet 4.5' }
+    ])
+
+    const wrapper = mount(AccountTestModal, {
+      props: {
+        show: false,
+        account: buildAccount({
+          id: 44,
+          name: 'Copilot OAuth',
+          platform: 'copilot',
+          type: 'oauth',
+          credentials: {
+            access_token: 'gho-test',
+            model_mapping: {
+              'gpt-5.4': 'gpt-5.4',
+              'claude-sonnet-4.5': 'claude-sonnet-4.5'
+            }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          BaseDialog: BaseDialogStub,
+          Select: SelectStub,
+          TextArea: TextAreaStub,
+          Icon: true
+        }
+      }
+    })
+
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    expect(getAvailableModelsMock).toHaveBeenCalledWith(44)
+    expect((wrapper.vm as any).availableModels.map((m: any) => m.id)).toEqual([
+      'gpt-5.4',
+      'claude-sonnet-4.5'
+    ])
+    expect((wrapper.vm as any).selectedModelId).toBe('claude-sonnet-4.5')
   })
 })
