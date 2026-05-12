@@ -1562,7 +1562,7 @@ func (s *GatewayService) selectAccountWithLoadAwarenessFiltered(ctx context.Cont
 
 	// 获取模型路由配置（仅 anthropic 平台）
 	var routingAccountIDs []int64
-	if group != nil && requestedModel != "" && group.Platform == PlatformAnthropic {
+	if group != nil && requestedModel != "" {
 		routingAccountIDs = group.GetRoutingAccountIDs(requestedModel)
 		if s.debugModelRoutingEnabled() {
 			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] context group routing: group_id=%d model=%s enabled=%v rules=%d matched_ids=%v session=%s sticky_account=%d",
@@ -2142,7 +2142,7 @@ func (s *GatewayService) ResolveGroupByID(ctx context.Context, groupID int64) (*
 }
 
 func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupID *int64, requestedModel string, platform string) []int64 {
-	if groupID == nil || requestedModel == "" || platform != PlatformAnthropic {
+	if groupID == nil || requestedModel == "" {
 		return nil
 	}
 	group, err := s.resolveGroupByID(ctx, *groupID)
@@ -2152,17 +2152,10 @@ func (s *GatewayService) routingAccountIDsForRequest(ctx context.Context, groupI
 		}
 		return nil
 	}
-	// Preserve existing behavior: model routing only applies to anthropic groups.
-	if group.Platform != PlatformAnthropic {
-		if s.debugModelRoutingEnabled() {
-			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] skip: non-anthropic group platform: group_id=%d group_platform=%s model=%s", group.ID, group.Platform, requestedModel)
-		}
-		return nil
-	}
 	ids := group.GetRoutingAccountIDs(requestedModel)
 	if s.debugModelRoutingEnabled() {
-		logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routing lookup: group_id=%d model=%s enabled=%v rules=%d matched_ids=%v",
-			group.ID, requestedModel, group.ModelRoutingEnabled, len(group.ModelRouting), ids)
+		logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routing lookup: group_id=%d group_platform=%s request_platform=%s model=%s enabled=%v rules=%d matched_ids=%v",
+			group.ID, group.Platform, platform, requestedModel, group.ModelRoutingEnabled, len(group.ModelRouting), ids)
 	}
 	return ids
 }
