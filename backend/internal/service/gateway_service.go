@@ -1401,6 +1401,16 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 // metadataUserID: 用于客户端亲和调度，从中提取客户端 ID
 // sub2apiUserID: 系统用户 ID，用于二维亲和调度
 func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) (*AccountSelectionResult, error) {
+	return s.selectAccountWithLoadAwarenessFiltered(ctx, groupID, sessionHash, requestedModel, excludedIDs, metadataUserID, sub2apiUserID, nil)
+}
+
+func (s *GatewayService) SelectAccountForProtocolWithLoadAwareness(ctx context.Context, groupID *int64, protocol InboundProtocol, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) (*AccountSelectionResult, error) {
+	return s.selectAccountWithLoadAwarenessFiltered(ctx, groupID, sessionHash, requestedModel, excludedIDs, metadataUserID, sub2apiUserID, func(account *Account) bool {
+		return AccountSupportsInboundProtocol(account, protocol)
+	})
+}
+
+func (s *GatewayService) selectAccountWithLoadAwarenessFiltered(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64, accountFilter func(*Account) bool) (*AccountSelectionResult, error) {
 	// 调试日志：记录调度入口参数
 	excludedIDsList := make([]int64, 0, len(excludedIDs))
 	for id := range excludedIDs {
@@ -1475,6 +1485,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			if err != nil {
 				return nil, err
 			}
+			if accountFilter != nil && !accountFilter(account) {
+				localExcluded[account.ID] = struct{}{}
+				continue
+			}
 
 			result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
 			if err == nil && result.Acquired {
@@ -1526,6 +1540,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	if err != nil {
 		return nil, err
 	}
+	accounts = filterAccountsForProtocol(accounts, accountFilter)
 	if len(accounts) == 0 {
 		return nil, ErrNoAvailableAccounts
 	}
@@ -2340,6 +2355,19 @@ func (s *GatewayService) listSchedulableAccountsForModel(ctx context.Context, gr
 		"model", requestedModel,
 		"count", len(accounts))
 	return accounts, true, nil
+}
+
+func filterAccountsForProtocol(accounts []Account, accountFilter func(*Account) bool) []Account {
+	if accountFilter == nil || len(accounts) == 0 {
+		return accounts
+	}
+	filtered := make([]Account, 0, len(accounts))
+	for i := range accounts {
+		if accountFilter(&accounts[i]) {
+			filtered = append(filtered, accounts[i])
+		}
+	}
+	return filtered
 }
 
 // IsSingleAntigravityAccountGroup 检查指定分组是否只有一个 antigravity 平台的可调度账号。
