@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/copilot"
 	httppool "github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	openaipkg "github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -113,6 +114,8 @@ const (
 	openAICodexProbeVersion = "0.125.0"
 )
 
+var copilotInternalUserURL = copilot.InternalUserURL
+
 // UsageCache 封装账户使用量相关的缓存
 type UsageCache struct {
 	apiCache          sync.Map           // accountID -> *apiUsageCache
@@ -189,6 +192,7 @@ type UsageInfo struct {
 	GeminiSharedMinute *UsageProgress `json:"gemini_shared_minute,omitempty"` // Gemini shared pool RPM (Google One / Code Assist)
 	GeminiProMinute    *UsageProgress `json:"gemini_pro_minute,omitempty"`    // Gemini Pro RPM
 	GeminiFlashMinute  *UsageProgress `json:"gemini_flash_minute,omitempty"`  // Gemini Flash RPM
+	CopilotUsage       *CopilotUsage  `json:"copilot_usage,omitempty"`        // GitHub Copilot Premium requests
 
 	// Antigravity 多模型配额
 	AntigravityQuota map[string]*AntigravityModelQuota `json:"antigravity_quota,omitempty"`
@@ -222,6 +226,34 @@ type UsageInfo struct {
 
 	// 获取 usage 时的错误信息（降级返回，而非 500）
 	Error string `json:"error,omitempty"`
+}
+
+type CopilotUsage struct {
+	PremiumRequests *CopilotPremiumRequests `json:"premium_requests,omitempty"`
+}
+
+type CopilotPremiumRequests struct {
+	Used      int        `json:"used"`
+	Limit     int        `json:"limit"`
+	Ratio     float64    `json:"ratio"`
+	Display   string     `json:"display"`
+	FetchedAt *time.Time `json:"fetched_at,omitempty"`
+	ResetAt   *time.Time `json:"reset_at,omitempty"`
+}
+
+type copilotInternalQuotaSnapshot struct {
+	Entitlement      int     `json:"entitlement"`
+	Remaining        int     `json:"remaining"`
+	PercentRemaining float64 `json:"percent_remaining"`
+	Unlimited        bool    `json:"unlimited"`
+}
+
+type copilotInternalUserResponse struct {
+	QuotaResetDate    string `json:"quota_reset_date"`
+	QuotaResetDateUTC string `json:"quota_reset_date_utc"`
+	QuotaSnapshots    struct {
+		PremiumInteractions *copilotInternalQuotaSnapshot `json:"premium_interactions"`
+	} `json:"quota_snapshots"`
 }
 
 // ClaudeUsageResponse Anthropic API返回的usage结构
@@ -303,6 +335,14 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*U
 
 	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
 		usage, err := s.getOpenAIUsage(ctx, account)
+		if err == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
+	}
+
+	if account.Platform == PlatformCopilot && account.Type == AccountTypeOAuth {
+		usage, err := s.getCopilotUsage(ctx, account)
 		if err == nil {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
@@ -695,6 +735,136 @@ func mergeAccountExtra(account *Account, updates map[string]any) {
 	for k, v := range updates {
 		account.Extra[k] = v
 	}
+}
+
+func (s *AccountUsageService) getCopilotUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+	now := time.Now()
+	usage := &UsageInfo{UpdatedAt: &now}
+	if account == nil {
+		return usage, nil
+	}
+
+	githubToken := strings.TrimSpace(account.GetCredential("github_access_token"))
+	if githubToken == "" {
+		usage.ErrorCode = "unauthenticated"
+		usage.NeedsReauth = true
+		usage.Error = "missing github_access_token"
+		return usage, nil
+	}
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	client, err := httppool.GetClient(httppool.Options{
+		ProxyURL:              proxyURL,
+		Timeout:               15 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build copilot usage client: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, copilotInternalUserURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create copilot usage request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+githubToken)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Editor-Version", copilot.DefaultEditorVersion)
+	req.Header.Set("Editor-Plugin-Version", copilot.DefaultEditorPluginVersion)
+	req.Header.Set("User-Agent", copilot.DefaultUserAgent)
+	req.Header.Set("X-GitHub-Api-Version", copilot.DefaultGitHubAPIVersion)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		usage.ErrorCode = "network_error"
+		usage.Error = fmt.Sprintf("copilot usage request failed: %v", err)
+		return usage, nil
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	switch resp.StatusCode {
+	case http.StatusUnauthorized:
+		usage.ErrorCode = "unauthenticated"
+		usage.NeedsReauth = true
+		usage.Error = "copilot usage unauthorized"
+		return usage, nil
+	case http.StatusForbidden:
+		usage.ErrorCode = "forbidden"
+		usage.Error = "copilot usage forbidden"
+		return usage, nil
+	case http.StatusTooManyRequests:
+		usage.ErrorCode = "rate_limited"
+		usage.Error = "copilot usage rate limited"
+		return usage, nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		usage.ErrorCode = "network_error"
+		usage.Error = fmt.Sprintf("copilot usage returned status %d", resp.StatusCode)
+		return usage, nil
+	}
+
+	var payload copilotInternalUserResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		usage.ErrorCode = "network_error"
+		usage.Error = fmt.Sprintf("decode copilot usage response failed: %v", err)
+		return usage, nil
+	}
+
+	if premium := buildCopilotPremiumRequests(payload, now); premium != nil {
+		usage.CopilotUsage = &CopilotUsage{PremiumRequests: premium}
+	}
+	return usage, nil
+}
+
+func buildCopilotPremiumRequests(payload copilotInternalUserResponse, fetchedAt time.Time) *CopilotPremiumRequests {
+	snapshot := payload.QuotaSnapshots.PremiumInteractions
+	if snapshot == nil || snapshot.Unlimited || snapshot.Entitlement <= 0 {
+		return nil
+	}
+	remaining := snapshot.Remaining
+	if remaining < 0 {
+		remaining = 0
+	}
+	if remaining > snapshot.Entitlement {
+		remaining = snapshot.Entitlement
+	}
+	used := snapshot.Entitlement - remaining
+	if used < 0 {
+		used = 0
+	}
+	ratio := 0.0
+	if snapshot.Entitlement > 0 {
+		ratio = float64(used) / float64(snapshot.Entitlement)
+	}
+	resetAt := parseOptionalTime(payload.QuotaResetDateUTC)
+	if resetAt == nil {
+		resetAt = parseOptionalTime(payload.QuotaResetDate)
+	}
+	fetchedAt = fetchedAt.UTC().Truncate(time.Second)
+	return &CopilotPremiumRequests{
+		Used:      used,
+		Limit:     snapshot.Entitlement,
+		Ratio:     ratio,
+		Display:   fmt.Sprintf("%d / %d (%.0f%%)", used, snapshot.Entitlement, ratio*100),
+		FetchedAt: &fetchedAt,
+		ResetAt:   resetAt,
+	}
+}
+
+func parseOptionalTime(value string) *time.Time {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parsed, err := parseTime(strings.TrimSpace(value))
+	if err != nil {
+		return nil
+	}
+	parsed = parsed.UTC()
+	return &parsed
 }
 
 func (s *AccountUsageService) getGeminiUsage(ctx context.Context, account *Account) (*UsageInfo, error) {

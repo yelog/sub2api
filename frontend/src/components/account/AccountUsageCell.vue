@@ -142,6 +142,31 @@
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
+    <!-- GitHub Copilot OAuth accounts: premium requests usage -->
+    <template v-else-if="account.platform === 'copilot' && account.type === 'oauth'">
+      <div v-if="loading" class="space-y-1.5">
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[52px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[76px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+      <div v-else-if="error" class="text-xs text-red-500">
+        {{ error }}
+      </div>
+      <div v-else-if="copilotPremiumDisplay" class="space-y-1">
+        <div class="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
+          <span class="inline-block rounded px-1.5 py-0.5 font-medium bg-slate-100 text-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+            Premium
+          </span>
+          <span :title="copilotPremiumTitle">{{ copilotPremiumDisplay }}</span>
+        </div>
+      </div>
+      <div v-else-if="usageInfo?.error" class="text-xs text-amber-600 dark:text-amber-400 truncate max-w-[200px]" :title="usageInfo.error">
+        {{ usageInfo.error }}
+      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
+    </template>
+
     <!-- Antigravity OAuth accounts: fetch usage from API -->
     <template v-else-if="account.platform === 'antigravity' && account.type === 'oauth'">
       <!-- 账户类型徽章 -->
@@ -540,6 +565,9 @@ const shouldFetchUsage = computed(() => {
   if (props.account.platform === 'openai') {
     return props.account.type === 'oauth'
   }
+  if (props.account.platform === 'copilot') {
+    return props.account.type === 'oauth'
+  }
   return false
 })
 
@@ -561,6 +589,16 @@ const geminiUsageAvailable = computed(() => {
 const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
   return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
+})
+
+const copilotPremiumRequests = computed(() => usageInfo.value?.copilot_usage?.premium_requests ?? null)
+const copilotPremiumDisplay = computed(() => copilotPremiumRequests.value?.display || '')
+const copilotPremiumTitle = computed(() => {
+  const premium = copilotPremiumRequests.value
+  if (!premium) return ''
+  return premium.reset_at
+    ? `${premium.display} · resets ${premium.reset_at}`
+    : premium.display
 })
 
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
@@ -1184,12 +1222,19 @@ onMounted(() => {
   requestAutoLoad(source)
 })
 
-watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
-  if (!prevKey || nextKey === prevKey) return
-  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
+watch(
+  openAIUsageRefreshKey,
+  (nextKey, prevKey) => {
+    if (!prevKey || nextKey === prevKey) return
+    if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
-  requestAutoLoad()
-})
+    _usageCache.delete(props.account.id)
+    loadUsage({ bypassCache: true }).catch((e) => {
+      console.error('Failed to reload OpenAI usage after row refresh:', e)
+    })
+  },
+  { flush: 'post' }
+)
 
 watch(
   () => props.manualRefreshToken,

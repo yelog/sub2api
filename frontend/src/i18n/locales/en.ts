@@ -3715,6 +3715,24 @@ export default {
           unlimited: 'Unlimited',
           limited: 'Rate limited {time}',
           now: 'now'
+        },
+        copilot: {
+          title: 'GitHub Copilot Account Authorization',
+          followSteps: 'Follow these steps to authorize your GitHub Copilot account:',
+          step1GenerateUrl: 'Generate device authorization link',
+          generateAuthUrl: 'Generate device authorization link',
+          step2OpenUrl: 'Open the GitHub device authorization page and approve access',
+          openUrlDesc: 'Open the GitHub device authorization page in a new tab, enter the User Code below, and approve access.',
+          step3EnterCode: 'Confirm device authorization status',
+          authCodeDesc: 'After approving access on GitHub, you do not need to paste a callback URL. Just click the button below to poll the authorization result.',
+          authCode: 'User Code',
+          authCodePlaceholder: 'GitHub Copilot device auth does not require a callback URL',
+          authCodeHint: 'Enter the User Code on GitHub, then come back here and click “Complete Authorization”.',
+          userCode: 'User Code',
+          deviceFlowOnly: 'Only GitHub device-code OAuth is supported',
+          failedToStartDeviceFlow: 'Failed to start GitHub Copilot device authorization',
+          missingDeviceCode: 'Missing device_code, please start authorization again',
+          failedToPollDeviceFlow: 'Failed to poll GitHub Copilot authorization result'
         }
       },
       // Re-Auth Modal
@@ -3723,6 +3741,7 @@ export default {
       openaiAccount: 'OpenAI Account',
       geminiAccount: 'Gemini Account',
       antigravityAccount: 'Antigravity Account',
+      copilotAccount: 'GitHub Copilot Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal

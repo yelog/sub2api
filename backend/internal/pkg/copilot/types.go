@@ -7,6 +7,7 @@ const (
 	DeviceCodeURL       = "https://github.com/login/device/code"
 	AccessTokenURL      = "https://github.com/login/oauth/access_token"
 	GitHubUserURL       = "https://api.github.com/user"
+	InternalUserURL     = "https://api.github.com/copilot_internal/user"
 	TokenExchangeURL    = "https://api.github.com/copilot_internal/v2/token"
 
 	DefaultEditorVersion        = "vscode/1.98.1"

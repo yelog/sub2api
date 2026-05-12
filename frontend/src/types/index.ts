@@ -483,7 +483,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'copilot'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -666,7 +666,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'copilot'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -909,6 +909,19 @@ export interface AntigravityModelQuota {
   reset_time: string  // 重置时间 ISO8601
 }
 
+export interface CopilotPremiumRequestsUsage {
+  used: number
+  limit: number
+  ratio: number
+  display: string
+  fetched_at?: string | null
+  reset_at?: string | null
+}
+
+export interface CopilotUsageInfo {
+  premium_requests?: CopilotPremiumRequestsUsage | null
+}
+
 export interface AccountUsageInfo {
   source?: 'passive' | 'active'
   updated_at: string | null
@@ -921,6 +934,7 @@ export interface AccountUsageInfo {
   gemini_shared_minute?: UsageProgress | null
   gemini_pro_minute?: UsageProgress | null
   gemini_flash_minute?: UsageProgress | null
+  copilot_usage?: CopilotUsageInfo | null
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
   ai_credits?: Array<{
     credit_type?: string

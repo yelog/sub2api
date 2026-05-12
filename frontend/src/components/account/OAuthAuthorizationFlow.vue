@@ -556,7 +556,7 @@
             </div>
           </div>
 
-          <!-- Step 3: Enter authorization code -->
+          <!-- Step 3: Enter authorization code / verify device flow -->
           <div
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
           >
@@ -574,7 +574,21 @@
                   class="mb-3 text-sm text-blue-700 dark:text-blue-300"
                   v-text="oauthAuthCodeDesc"
                 ></p>
-                <div>
+                <div v-if="isCopilot">
+                  <label class="input-label">
+                    <Icon name="key" size="sm" class="mr-1 inline text-blue-500" />
+                    {{ t('admin.accounts.oauth.copilot.userCode') }}
+                  </label>
+                  <div class="rounded-lg border border-dashed border-blue-300 bg-blue-50 px-4 py-3 font-mono text-lg font-semibold tracking-[0.25em] text-blue-900 dark:border-blue-600 dark:bg-blue-950/40 dark:text-blue-100">
+                    {{ userCode || '—' }}
+                  </div>
+                  <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    <Icon name="infoCircle" size="xs" class="mr-1 inline" />
+                    {{ oauthAuthCodeHint }}
+                  </p>
+                  <p v-if="statusMessage" class="mt-3 text-sm text-blue-700 dark:text-blue-300">{{ statusMessage }}</p>
+                </div>
+                <div v-else>
                   <label class="input-label">
                     <Icon name="key" size="sm" class="mr-1 inline text-blue-500" />
                     {{ oauthAuthCode }}
@@ -590,7 +604,6 @@
                     {{ oauthAuthCodeHint }}
                   </p>
 
-                  <!-- Gemini-specific state parameter warning -->
                   <div
                     v-if="platform === 'gemini'"
                     class="mt-3 rounded-lg border-2 border-amber-400 bg-amber-50 p-3 dark:border-amber-600 dark:bg-amber-900/30"
@@ -610,7 +623,6 @@
                   </div>
                 </div>
 
-                <!-- Error Message -->
                 <div
                   v-if="error"
                   class="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/30"
@@ -640,6 +652,8 @@ interface Props {
   addMethod: AddMethod
   authUrl?: string
   sessionId?: string
+  userCode?: string
+  statusMessage?: string
   loading?: boolean
   error?: string
   showHelp?: boolean
@@ -659,6 +673,8 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   authUrl: '',
   sessionId: '',
+  userCode: '',
+  statusMessage: '',
   loading: false,
   error: '',
   showHelp: true,
@@ -690,12 +706,14 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 const isOpenAI = computed(() => props.platform === 'openai')
+const isCopilot = computed(() => props.platform === 'copilot')
 
 // Get translation key based on platform
 const getOAuthKey = (key: string) => {
   if (props.platform === 'openai') return `admin.accounts.oauth.openai.${key}`
   if (props.platform === 'gemini') return `admin.accounts.oauth.gemini.${key}`
   if (props.platform === 'antigravity') return `admin.accounts.oauth.antigravity.${key}`
+  if (props.platform === 'copilot') return `admin.accounts.oauth.copilot.${key}`
   return `admin.accounts.oauth.${key}`
 }
 

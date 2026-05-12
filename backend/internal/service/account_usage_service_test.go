@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -155,6 +157,92 @@ func TestAccountUsageService_GetOpenAIUsage_DoesNotPromoteCodexExtraToRateLimit(
 		t.Fatalf("不应将已耗尽的 codex extra 持久化为运行时限流状态: %v", got)
 	case <-time.After(200 * time.Millisecond):
 	}
+}
+
+func TestBuildCopilotPremiumRequests(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 11, 15, 30, 0, 0, time.UTC)
+	payload := copilotInternalUserResponse{}
+	payload.QuotaResetDateUTC = "2026-06-01T00:00:00Z"
+	payload.QuotaSnapshots.PremiumInteractions = &copilotInternalQuotaSnapshot{
+		Entitlement: 500,
+		Remaining:   315,
+	}
+
+	premium := buildCopilotPremiumRequests(payload, now)
+	if premium == nil {
+		t.Fatal("expected premium requests payload")
+	}
+	if premium.Used != 185 || premium.Limit != 500 {
+		t.Fatalf("unexpected premium usage: %#v", premium)
+	}
+	if premium.Display != "185 / 500 (37%)" {
+		t.Fatalf("display = %q", premium.Display)
+	}
+	if premium.ResetAt == nil || premium.ResetAt.Format(time.RFC3339) != "2026-06-01T00:00:00Z" {
+		t.Fatalf("reset_at = %#v", premium.ResetAt)
+	}
+}
+
+func TestAccountUsageService_GetCopilotUsage(t *testing.T) {
+	t.Parallel()
+
+	origURL := copilotInternalUserURL
+	defer func() { copilotInternalUserURL = origURL }()
+
+	t.Run("success", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if got := r.Header.Get("Authorization"); got != "Bearer github-token" {
+				t.Fatalf("authorization = %q", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"quota_reset_date_utc":"2026-06-01T00:00:00Z","quota_snapshots":{"premium_interactions":{"entitlement":500,"remaining":315,"percent_remaining":63}}}`)
+		}))
+		defer server.Close()
+		copilotInternalUserURL = server.URL
+
+		svc := &AccountUsageService{}
+		usage, err := svc.getCopilotUsage(context.Background(), &Account{
+			Platform: PlatformCopilot,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"github_access_token": "github-token",
+			},
+		})
+		if err != nil {
+			t.Fatalf("getCopilotUsage() error = %v", err)
+		}
+		if usage.CopilotUsage == nil || usage.CopilotUsage.PremiumRequests == nil {
+			t.Fatalf("missing copilot usage: %#v", usage)
+		}
+		if got := usage.CopilotUsage.PremiumRequests.Display; got != "185 / 500 (37%)" {
+			t.Fatalf("display = %q", got)
+		}
+	})
+
+	t.Run("unauthorized degrades to reauth", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+		defer server.Close()
+		copilotInternalUserURL = server.URL
+
+		svc := &AccountUsageService{}
+		usage, err := svc.getCopilotUsage(context.Background(), &Account{
+			Platform: PlatformCopilot,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"github_access_token": "github-token",
+			},
+		})
+		if err != nil {
+			t.Fatalf("getCopilotUsage() error = %v", err)
+		}
+		if !usage.NeedsReauth || usage.ErrorCode != "unauthenticated" {
+			t.Fatalf("expected reauth degraded usage, got %#v", usage)
+		}
+	})
 }
 
 func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
