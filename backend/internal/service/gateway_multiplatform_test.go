@@ -129,7 +129,13 @@ func (m *mockAccountRepoForPlatform) ListSchedulable(ctx context.Context) ([]Acc
 	return nil, nil
 }
 func (m *mockAccountRepoForPlatform) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error) {
-	return nil, nil
+	var result []Account
+	for _, acc := range m.accounts {
+		if acc.IsSchedulable() {
+			result = append(result, acc)
+		}
+	}
+	return result, nil
 }
 func (m *mockAccountRepoForPlatform) ListSchedulableByPlatforms(ctx context.Context, platforms []string) ([]Account, error) {
 	var result []Account
@@ -299,6 +305,120 @@ func (m *mockGroupRepoForGateway) UpdateSortOrders(ctx context.Context, updates 
 
 func ptr[T any](v T) *T {
 	return &v
+}
+
+func makeGatewayModelRoutingRepo(accounts []Account) *mockAccountRepoForPlatform {
+	repo := &mockAccountRepoForPlatform{
+		accounts:     accounts,
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	}
+	return repo
+}
+
+func TestGatewayService_SelectAccountWithLoadAwareness_CrossPlatformByModelCapability(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10)
+	repo := makeGatewayModelRoutingRepo([]Account{
+		{
+			ID:          1,
+			Platform:    PlatformAnthropic,
+			Priority:    1,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{"model_mapping": map[string]any{"claude-sonnet-4-5": "claude-sonnet-4-5"}},
+		},
+		{
+			ID:          2,
+			Platform:    PlatformOpenAI,
+			Priority:    2,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5"}},
+		},
+	})
+
+	svc := &GatewayService{
+		accountRepo: repo,
+		groupRepo: &mockGroupRepoForGateway{groups: map[int64]*Group{
+			groupID: {ID: groupID, Platform: PlatformAnthropic, Status: StatusActive},
+		}},
+		cache:              &mockGatewayCacheForPlatform{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+		cfg:                testConfig(),
+	}
+
+	selection, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "gpt-5.5", nil, "", 0)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(2), selection.Account.ID)
+	require.Equal(t, PlatformOpenAI, selection.Account.Platform)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestGatewayService_SelectAccountWithLoadAwareness_ForcePlatformKeepsPlatformFilter(t *testing.T) {
+	groupID := int64(11)
+	repo := makeGatewayModelRoutingRepo([]Account{
+		{ID: 1, Platform: PlatformOpenAI, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 1, Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5"}}},
+		{ID: 2, Platform: PlatformAntigravity, Priority: 2, Status: StatusActive, Schedulable: true, Concurrency: 1, Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5"}}},
+	})
+
+	svc := &GatewayService{
+		accountRepo: repo,
+		groupRepo: &mockGroupRepoForGateway{groups: map[int64]*Group{
+			groupID: {ID: groupID, Platform: PlatformAnthropic, Status: StatusActive},
+		}},
+		cache:              &mockGatewayCacheForPlatform{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+		cfg:                testConfig(),
+	}
+	ctx := context.WithValue(context.Background(), ctxkey.ForcePlatform, PlatformAntigravity)
+
+	selection, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "gpt-5.5", nil, "", 0)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(2), selection.Account.ID)
+	require.Equal(t, PlatformAntigravity, selection.Account.Platform)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestGatewayService_SelectAccountWithLoadAwareness_EmptyModelKeepsLegacyPlatform(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(12)
+	repo := makeGatewayModelRoutingRepo([]Account{
+		{ID: 1, Platform: PlatformAnthropic, Priority: 2, Status: StatusActive, Schedulable: true, Concurrency: 1},
+		{ID: 2, Platform: PlatformOpenAI, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 1},
+	})
+
+	svc := &GatewayService{
+		accountRepo: repo,
+		groupRepo: &mockGroupRepoForGateway{groups: map[int64]*Group{
+			groupID: {ID: groupID, Platform: PlatformAnthropic, Status: StatusActive},
+		}},
+		cache:              &mockGatewayCacheForPlatform{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+		cfg:                testConfig(),
+	}
+
+	selection, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "", nil, "", 0)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(1), selection.Account.ID)
+	require.Equal(t, PlatformAnthropic, selection.Account.Platform)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
 }
 
 // TestGatewayService_SelectAccountForModelWithPlatform_Anthropic 测试 anthropic 单平台选择
