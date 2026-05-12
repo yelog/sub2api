@@ -213,7 +213,8 @@ func (s *AccountTestService) testCopilotAccountConnection(c *gin.Context, accoun
 
 	authToken, err := s.resolveCopilotTestToken(ctx, account)
 	if err != nil {
-		return s.sendErrorAndEnd(c, err.Error())
+		_ = s.sendErrorAndEnd(c, err.Error())
+		return nil
 	}
 
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
