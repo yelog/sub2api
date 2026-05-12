@@ -26,7 +26,7 @@ func (u *copilotTestHTTPUpstream) Do(req *http.Request, _ string, _ int64, _ int
 	return &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
-		Body:       io.NopCloser(strings.NewReader("data: {\"type\":\"message_stop\"}\n\n")),
+		Body:       io.NopCloser(strings.NewReader("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n")),
 	}, nil
 }
 
@@ -66,8 +66,11 @@ func TestAccountTestService_TestAccountConnection_CopilotAppliesModelMapping(t *
 	err := svc.TestAccountConnection(c, account.ID, "gpt-5.4", "", AccountTestModeDefault)
 	require.NoError(t, err)
 	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://api.githubcopilot.com/chat/completions", upstream.lastReq.URL.String())
 	require.Equal(t, "claude-sonnet-4.5", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, "Bearer copilot-token", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "conversation-edits", upstream.lastReq.Header.Get("Openai-Intent"))
+	require.Equal(t, "user", upstream.lastReq.Header.Get("x-initiator"))
 	require.Contains(t, rec.Body.String(), `"model":"claude-sonnet-4.5"`)
 	require.Contains(t, rec.Body.String(), `"type":"test_complete"`)
 }

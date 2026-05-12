@@ -33,8 +33,9 @@ import (
 var sseDataPrefix = regexp.MustCompile(`^data:\s*`)
 
 const (
-	testClaudeAPIURL   = "https://api.anthropic.com/v1/messages?beta=true"
-	chatgptCodexAPIURL = "https://chatgpt.com/backend-api/codex/responses"
+	testClaudeAPIURL       = "https://api.anthropic.com/v1/messages?beta=true"
+	chatgptCodexAPIURL     = "https://chatgpt.com/backend-api/codex/responses"
+	copilotChatCompletions = "https://api.githubcopilot.com/chat/completions"
 )
 
 // TestEvent represents a SSE event for account testing
@@ -200,13 +201,13 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 
-// testCopilotAccountConnection tests a GitHub Copilot OAuth account using the Copilot token shape.
+// testCopilotAccountConnection tests a GitHub Copilot OAuth account using Copilot's OpenAI-compatible chat API.
 func (s *AccountTestService) testCopilotAccountConnection(c *gin.Context, account *Account, modelID string) error {
 	ctx := c.Request.Context()
 
 	testModelID := modelID
 	if testModelID == "" {
-		testModelID = claude.DefaultTestModel
+		testModelID = openai.DefaultTestModel
 	}
 	testModelID = account.GetMappedModel(testModelID)
 
@@ -221,25 +222,21 @@ func (s *AccountTestService) testCopilotAccountConnection(c *gin.Context, accoun
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payload, err := createTestPayload(testModelID)
-	if err != nil {
-		return s.sendErrorAndEnd(c, "Failed to create test payload")
-	}
+	payload := createCopilotTestPayload(testModelID)
 	payloadBytes, _ := json.Marshal(payload)
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 
-	req, err := http.NewRequestWithContext(ctx, "POST", testClaudeAPIURL, bytes.NewReader(payloadBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, copilotChatCompletions, bytes.NewReader(payloadBytes))
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create request")
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("anthropic-version", "2023-06-01")
-	for key, value := range claude.DefaultHeaders {
-		req.Header.Set(key, value)
-	}
-	req.Header.Set("anthropic-beta", claude.DefaultBetaHeader)
+	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
+	req.Header.Set("User-Agent", copilot.DefaultUserAgent)
+	req.Header.Set("Openai-Intent", "conversation-edits")
+	req.Header.Set("x-initiator", "user")
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -255,13 +252,13 @@ func (s *AccountTestService) testCopilotAccountConnection(c *gin.Context, accoun
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
-		if resp.StatusCode == http.StatusForbidden {
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
 		return s.sendErrorAndEnd(c, errMsg)
 	}
 
-	return s.processClaudeStream(c, resp.Body)
+	return s.processCopilotChatStream(c, resp.Body)
 }
 
 func (s *AccountTestService) resolveCopilotTestToken(ctx context.Context, account *Account) (string, error) {
@@ -298,6 +295,77 @@ func (s *AccountTestService) resolveCopilotTestToken(ctx context.Context, accoun
 	}
 
 	return copilotToken.Token, nil
+}
+
+func createCopilotTestPayload(modelID string) map[string]any {
+	return map[string]any{
+		"model": modelID,
+		"messages": []map[string]any{
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{
+						"type": "text",
+						"text": "hi",
+					},
+				},
+			},
+		},
+		"stream": true,
+	}
+}
+
+func (s *AccountTestService) processCopilotChatStream(c *gin.Context, body io.Reader) error {
+	reader := bufio.NewReader(body)
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+				return nil
+			}
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
+		}
+
+		line = strings.TrimSpace(line)
+		if line == "" || !sseDataPrefix.MatchString(line) {
+			continue
+		}
+
+		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+		if jsonStr == "[DONE]" {
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
+		}
+
+		var data map[string]any
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			continue
+		}
+
+		choices, _ := data["choices"].([]any)
+		for _, choiceAny := range choices {
+			choice, _ := choiceAny.(map[string]any)
+			if finishReason, _ := choice["finish_reason"].(string); finishReason != "" {
+				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+				return nil
+			}
+
+			delta, _ := choice["delta"].(map[string]any)
+			if content, ok := delta["content"].(string); ok && content != "" {
+				s.sendEvent(c, TestEvent{Type: "content", Text: content})
+			}
+		}
+
+		if errData, ok := data["error"].(map[string]any); ok {
+			errorMsg := "Unknown error"
+			if msg, ok := errData["message"].(string); ok && msg != "" {
+				errorMsg = msg
+			}
+			return s.sendErrorAndEnd(c, errorMsg)
+		}
+	}
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection
