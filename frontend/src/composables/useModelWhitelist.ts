@@ -32,19 +32,36 @@ export const claudeModels = [
   'claude-sonnet-4-6'
 ]
 
+interface ModelDisplayMeta {
+  label: string
+  tier?: 'premium' | 'standard'
+  multiplier?: string
+}
+
 // GitHub Copilot
-const copilotModels = [
-  'gpt-4.1',
-  'gpt-4o',
-  'gpt-4o-mini',
-  'gpt-5',
-  'gpt-5-mini',
-  'gpt-5.1',
-  'gpt-5.1-codex',
-  'claude-sonnet-4',
-  'claude-opus-4.1',
-  'gemini-2.5-pro'
-]
+const copilotModelMeta: Record<string, ModelDisplayMeta> = {
+  'claude-haiku-4.5': { label: 'Claude Haiku 4.5', tier: 'premium', multiplier: '0.33x' },
+  'claude-opus-4.5': { label: 'Claude Opus 4.5', tier: 'premium', multiplier: '3x' },
+  'claude-opus-4.6': { label: 'Claude Opus 4.6', tier: 'premium', multiplier: '3x' },
+  'claude-opus-4.7': { label: 'Claude Opus 4.7', tier: 'premium', multiplier: '15x' },
+  'claude-sonnet-4.5': { label: 'Claude Sonnet 4.5', tier: 'premium', multiplier: '1x' },
+  'claude-sonnet-4.6': { label: 'Claude Sonnet 4.6', tier: 'premium', multiplier: '1x' },
+  'gpt-5.2': { label: 'GPT-5.2', tier: 'premium', multiplier: '1x' },
+  'gpt-5.2-codex': { label: 'GPT-5.2-Codex', tier: 'premium', multiplier: '1x' },
+  'gpt-5.3-codex': { label: 'GPT-5.3-Codex', tier: 'premium', multiplier: '1x' },
+  'gpt-5.4': { label: 'GPT-5.4', tier: 'premium', multiplier: '1x' },
+  'gpt-5.4-mini': { label: 'GPT-5.4 mini', tier: 'premium', multiplier: '0.33x' },
+  'gpt-5.5': { label: 'GPT-5.5', tier: 'premium', multiplier: '7.5x' },
+  'gemini-2.5-pro': { label: 'Gemini 2.5 Pro', tier: 'premium', multiplier: '1x' },
+  'gemini-3-flash-preview': { label: 'Gemini 3 Flash (Preview)', tier: 'premium', multiplier: '0.33x' },
+  'gemini-3.1-pro-preview': { label: 'Gemini 3.1 Pro (Preview)', tier: 'premium', multiplier: '1x' },
+  'grok-code-fast-1': { label: 'Grok Code Fast 1', tier: 'premium', multiplier: '0.25x' },
+  'gpt-4.1': { label: 'GPT-4.1', tier: 'standard', multiplier: 'included' },
+  'gpt-4o': { label: 'GPT-4o', tier: 'standard', multiplier: 'included' },
+  'gpt-5-mini': { label: 'GPT-5 mini', tier: 'standard', multiplier: 'included' }
+}
+
+const copilotModels = Object.keys(copilotModelMeta)
 
 // Google Gemini
 const geminiModels = [
@@ -239,7 +256,12 @@ const allModelsList: string[] = [
 ]
 
 // 转换为下拉选项格式
-export const allModels = allModelsList.map(m => ({ value: m, label: m }))
+export const allModels = allModelsList.map(m => ({ value: m, label: getModelDisplayMeta('copilot', m)?.label ?? m }))
+
+export function getModelDisplayMeta(platform: string, model: string): ModelDisplayMeta | undefined {
+  if (platform === 'copilot') return copilotModelMeta[model]
+  return undefined
+}
 
 // =====================
 // 预设映射
@@ -273,10 +295,12 @@ const openaiPresetMappings = [
 ]
 
 const copilotPresetMappings = copilotModels.map(model => ({
-  label: model,
+  label: copilotModelMeta[model]?.label ?? model,
   from: model,
   to: model,
-  color: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-900/30 dark:text-slate-300'
+  color: copilotModelMeta[model]?.tier === 'standard'
+    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400'
+    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-900/30 dark:text-slate-300'
 }))
 
 const geminiPresetMappings = [

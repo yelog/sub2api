@@ -67,7 +67,13 @@
               </svg>
             </span>
             <ModelIcon :model="model.value" size="18px" />
-            <span class="truncate text-gray-900 dark:text-white">{{ model.value }}</span>
+            <span class="min-w-0 flex-1 truncate text-gray-900 dark:text-white">{{ model.meta?.label ?? model.label }}</span>
+            <span
+              v-if="model.meta?.multiplier"
+              class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-dark-600 dark:text-gray-300"
+            >
+              {{ model.meta.multiplier }}
+            </span>
           </button>
           <div v-if="filteredModels.length === 0" class="px-3 py-4 text-center text-sm text-gray-500">
             {{ t('admin.accounts.noMatchingModels') }}
@@ -125,7 +131,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
+import { allModels, getModelDisplayMeta, getModelsByPlatform } from '@/composables/useModelWhitelist'
 
 const { t } = useI18n()
 
@@ -162,6 +168,8 @@ const normalizedPlatforms = computed(() => {
   )
 })
 
+const isCopilotOnly = computed(() => normalizedPlatforms.value.length === 1 && normalizedPlatforms.value[0] === 'copilot')
+
 const availableOptions = computed(() => {
   if (normalizedPlatforms.value.length === 0) {
     return allModels
@@ -179,9 +187,17 @@ const availableOptions = computed(() => {
 
 const filteredModels = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
-  if (!query) return availableOptions.value
-  return availableOptions.value.filter(
-    m => m.value.toLowerCase().includes(query) || m.label.toLowerCase().includes(query)
+  const options = availableOptions.value.map(model => ({
+    ...model,
+    meta: isCopilotOnly.value ? getModelDisplayMeta('copilot', model.value) : undefined
+  }))
+
+  if (!query) return options
+  return options.filter(
+    m =>
+      m.value.toLowerCase().includes(query) ||
+      m.label.toLowerCase().includes(query) ||
+      m.meta?.label.toLowerCase().includes(query)
   )
 })
 
