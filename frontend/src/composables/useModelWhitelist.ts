@@ -32,6 +32,20 @@ export const claudeModels = [
   'claude-sonnet-4-6'
 ]
 
+// GitHub Copilot
+const copilotModels = [
+  'gpt-4.1',
+  'gpt-4o',
+  'gpt-4o-mini',
+  'gpt-5',
+  'gpt-5-mini',
+  'gpt-5.1',
+  'gpt-5.1-codex',
+  'claude-sonnet-4',
+  'claude-opus-4.1',
+  'gemini-2.5-pro'
+]
+
 // Google Gemini
 const geminiModels = [
   // Keep in sync with backend curated Gemini lists.
@@ -205,6 +219,7 @@ const perplexityModels = [
 const allModelsList: string[] = [
   ...openaiModels,
   ...claudeModels,
+  ...copilotModels,
   ...geminiModels,
   ...zhipuModels,
   ...qwenModels,
@@ -256,6 +271,13 @@ const openaiPresetMappings = [
   { label: 'Opus→5.4', from: 'claude-opus-4-6', to: 'gpt-5.4', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
   { label: 'Sonnet→5.4', from: 'claude-sonnet-4-6', to: 'gpt-5.4', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' }
 ]
+
+const copilotPresetMappings = copilotModels.map(model => ({
+  label: model,
+  from: model,
+  to: model,
+  color: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-900/30 dark:text-slate-300'
+}))
 
 const geminiPresetMappings = [
   { label: 'Flash 2.0', from: 'gemini-2.0-flash', to: 'gemini-2.0-flash', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
@@ -353,6 +375,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'anthropic':
     case 'claude': return claudeModels
     case 'gemini': return geminiModels
+    case 'copilot': return copilotModels
     case 'antigravity': return antigravityModels
     case 'zhipu': return zhipuModels
     case 'qwen': return qwenModels
@@ -377,6 +400,7 @@ export function getModelsByPlatform(platform: string): string[] {
 export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
+  if (platform === 'copilot') return copilotPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
   return anthropicPresetMappings

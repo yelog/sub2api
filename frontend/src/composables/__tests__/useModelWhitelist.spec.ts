@@ -4,7 +4,7 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform } from '../useModelWhitelist'
+import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform } from '../useModelWhitelist'
 
 describe('useModelWhitelist', () => {
   it('openai 模型列表包含 GPT-5.4 官方快照', () => {
@@ -25,6 +25,32 @@ describe('useModelWhitelist', () => {
     expect(models).not.toContain('gpt-5.1-codex-max')
     expect(models).not.toContain('gpt-5.1-codex-mini')
     expect(models).not.toContain('gpt-5.2-codex')
+  })
+
+  it('copilot 模型列表包含 GitHub Copilot 支持模型且不会回退到 Claude 列表', () => {
+    const models = getModelsByPlatform('copilot')
+
+    expect(models).toEqual([
+      'gpt-4.1',
+      'gpt-4o',
+      'gpt-4o-mini',
+      'gpt-5',
+      'gpt-5-mini',
+      'gpt-5.1',
+      'gpt-5.1-codex',
+      'claude-sonnet-4',
+      'claude-opus-4.1',
+      'gemini-2.5-pro'
+    ])
+    expect(models).not.toContain('claude-sonnet-4-20250514')
+  })
+
+  it('copilot 预设映射只包含 GitHub Copilot 支持模型', () => {
+    const presets = getPresetMappingsByPlatform('copilot')
+
+    expect(presets.map(preset => preset.to)).toEqual(getModelsByPlatform('copilot'))
+    expect(presets.map(preset => preset.label)).toContain('gpt-5.1-codex')
+    expect(presets.map(preset => preset.label)).not.toContain('GPT-5.4')
   })
 
   it('antigravity 模型列表包含图片模型兼容项', () => {
