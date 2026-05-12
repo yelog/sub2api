@@ -45,9 +45,8 @@ describe('UseKeyModal', () => {
     await opencodeTab!.trigger('click')
     await nextTick()
 
-    const codeBlock = wrapper.find('pre code')
-    expect(codeBlock.exists()).toBe(true)
-    expect(codeBlock.text()).toContain('"name": "GPT-5.4 Mini"')
-    expect(codeBlock.text()).not.toContain('"name": "GPT-5.4 Nano"')
+    const codeText = wrapper.findAll('pre code').map((block) => block.text()).join('\n')
+    expect(codeText).toContain('"name": "GPT-5.4 Mini"')
+    expect(codeText).not.toContain('"name": "GPT-5.4 Nano"')
   })
 })
