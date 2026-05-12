@@ -235,6 +235,9 @@ func (s *AccountTestService) testCopilotAccountConnection(c *gin.Context, accoun
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
 	req.Header.Set("User-Agent", copilot.DefaultUserAgent)
+	req.Header.Set("Editor-Version", copilot.DefaultEditorVersion)
+	req.Header.Set("Editor-Plugin-Version", copilot.DefaultEditorPluginVersion)
+	req.Header.Set("X-GitHub-Api-Version", copilot.DefaultGitHubAPIVersion)
 	req.Header.Set("Openai-Intent", "conversation-edits")
 	req.Header.Set("x-initiator", "user")
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/copilot"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -69,6 +70,9 @@ func TestAccountTestService_TestAccountConnection_CopilotAppliesModelMapping(t *
 	require.Equal(t, "https://api.githubcopilot.com/chat/completions", upstream.lastReq.URL.String())
 	require.Equal(t, "claude-sonnet-4.5", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, "Bearer copilot-token", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, copilot.DefaultEditorVersion, upstream.lastReq.Header.Get("Editor-Version"))
+	require.Equal(t, copilot.DefaultEditorPluginVersion, upstream.lastReq.Header.Get("Editor-Plugin-Version"))
+	require.Equal(t, copilot.DefaultGitHubAPIVersion, upstream.lastReq.Header.Get("X-GitHub-Api-Version"))
 	require.Equal(t, "conversation-edits", upstream.lastReq.Header.Get("Openai-Intent"))
 	require.Equal(t, "user", upstream.lastReq.Header.Get("x-initiator"))
 	require.Contains(t, rec.Body.String(), `"model":"claude-sonnet-4.5"`)
