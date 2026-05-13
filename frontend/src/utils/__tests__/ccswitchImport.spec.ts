@@ -18,7 +18,7 @@ describe('ccswitchImport utils', () => {
     usageScript: 'return true'
   }
 
-  it('adds the Codex model parameter for OpenAI imports', () => {
+  it('adds the Codex model parameter for OpenAI imports by default', () => {
     const params = paramsFromDeeplink(
       buildCcSwitchImportDeeplink({
         ...baseInput,
@@ -32,6 +32,21 @@ describe('ccswitchImport utils', () => {
     expect(params.get('endpoint')).toBe(baseInput.baseUrl)
     expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
     expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
+  })
+
+
+  it('uses the selected model parameter when provided', () => {
+    const params = paramsFromDeeplink(
+      buildCcSwitchImportDeeplink({
+        ...baseInput,
+        platform: 'openai',
+        clientType: 'claude',
+        model: 'gpt-5.5'
+      })
+    )
+
+    expect(params.get('app')).toBe('codex')
+    expect(params.get('model')).toBe('gpt-5.5')
   })
 
   it.each([

@@ -17,6 +17,7 @@ export interface CcSwitchImportDeeplinkInput {
   providerName: string
   apiKey: string
   usageScript: string
+  model?: string | null
 }
 
 export function resolveCcSwitchImportConfig(
@@ -51,6 +52,7 @@ export function resolveCcSwitchImportConfig(
 
 export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput): string {
   const config = resolveCcSwitchImportConfig(input.platform, input.clientType, input.baseUrl)
+  const model = input.model || config.model
   const entries: [string, string][] = [
     ['resource', 'provider'],
     ['app', config.app],
@@ -64,8 +66,8 @@ export function buildCcSwitchImportDeeplink(input: CcSwitchImportDeeplinkInput):
     ['usageAutoInterval', '30']
   ]
 
-  if (config.model) {
-    entries.splice(2, 0, ['model', config.model])
+  if (model) {
+    entries.splice(2, 0, ['model', model])
   }
 
   return `ccswitch://v1/import?${new URLSearchParams(entries).toString()}`

@@ -930,48 +930,48 @@
       @close="closeUseKeyModal"
     />
 
-    <!-- CCS Client Selection Dialog for Antigravity -->
+    <!-- CC Switch Import Dialog -->
     <BaseDialog
-      :show="showCcsClientSelect"
-      :title="t('keys.ccsClientSelect.title')"
-      width="narrow"
-      @close="closeCcsClientSelect"
+      :show="showCcsImportDialog"
+      :title="t('keys.ccsImport.title')"
+      width="normal"
+      @close="closeCcsImportDialog"
     >
       <div class="space-y-4">
         <p class="text-sm text-gray-600 dark:text-gray-400">
-          {{ t('keys.ccsClientSelect.description') }}
-	        </p>
-	        <div class="grid grid-cols-2 gap-3">
-	          <button
-	            @click="handleCcsClientSelect('claude')"
-	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
-	          >
-	            <Icon name="terminal" size="xl" class="text-gray-600 dark:text-gray-400" />
-	            <span class="font-medium text-gray-900 dark:text-white">{{
-	              t('keys.ccsClientSelect.claudeCode')
-	            }}</span>
-	            <span class="text-xs text-gray-500 dark:text-gray-400">{{
-	              t('keys.ccsClientSelect.claudeCodeDesc')
-	            }}</span>
-	          </button>
-	          <button
-	            @click="handleCcsClientSelect('gemini')"
-	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
-	          >
-	            <Icon name="sparkles" size="xl" class="text-gray-600 dark:text-gray-400" />
-	            <span class="font-medium text-gray-900 dark:text-white">{{
-	              t('keys.ccsClientSelect.geminiCli')
-	            }}</span>
-	            <span class="text-xs text-gray-500 dark:text-gray-400">{{
-	              t('keys.ccsClientSelect.geminiCliDesc')
-	            }}</span>
-	          </button>
-	        </div>
-	      </div>
+          {{ t('keys.ccsImport.description') }}
+        </p>
+
+        <div v-if="pendingCcsRow?.group?.platform === 'antigravity'">
+          <label class="input-label">{{ t('keys.ccsImport.clientLabel') }}</label>
+          <Select
+            :model-value="ccsImportClientType"
+            :options="[
+              { value: 'claude', label: t('keys.ccsImport.claudeCode') },
+              { value: 'gemini', label: t('keys.ccsImport.geminiCli') }
+            ]"
+            @update:model-value="handleCcsClientChange"
+          />
+        </div>
+
+        <div>
+          <label class="input-label">{{ t('keys.ccsImport.modelLabel') }}</label>
+          <Select
+            v-model="ccsImportModel"
+            :options="ccsImportModelOptions"
+            :placeholder="t('keys.ccsImport.modelPlaceholder')"
+            :searchable="true"
+          />
+          <p class="input-hint">{{ t('keys.ccsImport.modelHint') }}</p>
+        </div>
+      </div>
       <template #footer>
-        <div class="flex justify-end">
-          <button @click="closeCcsClientSelect" class="btn btn-secondary">
+        <div class="flex justify-end gap-3">
+          <button @click="closeCcsImportDialog" class="btn btn-secondary">
             {{ t('common.cancel') }}
+          </button>
+          <button @click="handleCcsImportSubmit" class="btn btn-primary" :disabled="!ccsImportModel">
+            {{ t('keys.importToCcSwitch') }}
           </button>
         </div>
       </template>
@@ -1053,7 +1053,7 @@
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
 const { t } = useI18n()
-import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
+import { keysAPI, authAPI, usageAPI, userGroupsAPI, userChannelsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import DataTable from '@/components/common/DataTable.vue'
@@ -1069,14 +1069,17 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
+import type { UserAvailableChannel } from '@/api/channels'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
 import { maskApiKey } from '@/utils/maskApiKey'
 import {
   buildCcSwitchImportDeeplink,
+  OPENAI_CC_SWITCH_CODEX_MODEL,
   type CcSwitchClientType
 } from '@/utils/ccswitchImport'
+import { getModelsByPlatform, getModelDisplayMeta } from '@/composables/useModelWhitelist'
 
 // Helper to format date for datetime-local input
 const formatDateTimeLocal = (isoDate: string): string => {
@@ -1143,12 +1146,15 @@ const showDeleteDialog = ref(false)
 const showResetQuotaDialog = ref(false)
 const showResetRateLimitDialog = ref(false)
 const showUseKeyModal = ref(false)
-const showCcsClientSelect = ref(false)
+const showCcsImportDialog = ref(false)
+const ccsImportClientType = ref<CcSwitchClientType>('claude')
+const ccsImportModel = ref('')
 const pendingCcsRow = ref<ApiKey | null>(null)
 const selectedKey = ref<ApiKey | null>(null)
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
 const publicSettings = ref<PublicSettings | null>(null)
+const availableChannels = ref<UserAvailableChannel[]>([])
 const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
@@ -1356,6 +1362,14 @@ const loadPublicSettings = async () => {
     publicSettings.value = await authAPI.getPublicSettings()
   } catch (error) {
     console.error('Failed to load public settings:', error)
+  }
+}
+
+const loadAvailableChannels = async () => {
+  try {
+    availableChannels.value = await userChannelsAPI.getAvailable()
+  } catch (error) {
+    console.error('Failed to load available channels:', error)
   }
 }
 
@@ -1690,21 +1704,66 @@ const resetRateLimitUsage = async () => {
   }
 }
 
-const importToCcswitch = (row: ApiKey) => {
+const getCcsGroupModels = (row: ApiKey, clientType: CcSwitchClientType = ccsImportClientType.value): string[] => {
   const platform = row.group?.platform || 'anthropic'
+  const channelModels = availableChannels.value
+    .flatMap((channel) => channel.platforms)
+    .filter((section) => section.platform === platform)
+    .filter((section) => section.groups.some((group) => group.id === row.group_id))
+    .flatMap((section) => section.supported_models.map((model) => model.name))
 
-  // For antigravity platform, show client selection dialog
+  let models = Array.from(new Set(channelModels.length > 0 ? channelModels : getModelsByPlatform(platform)))
   if (platform === 'antigravity') {
-    pendingCcsRow.value = row
-    showCcsClientSelect.value = true
-    return
+    const preferredPrefix = clientType === 'gemini' ? 'gemini-' : 'claude-'
+    const preferred = models.filter((model) => model.startsWith(preferredPrefix))
+    const others = models.filter((model) => !model.startsWith(preferredPrefix))
+    models = [...preferred, ...others]
   }
 
-  // For other platforms, execute directly
-  executeCcsImport(row, platform === 'gemini' ? 'gemini' : 'claude')
+  return models
 }
 
-const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
+const getCcsDefaultModel = (row: ApiKey, clientType: CcSwitchClientType = ccsImportClientType.value): string => {
+  const platform = row.group?.platform || 'anthropic'
+  const models = getCcsGroupModels(row, clientType)
+  const candidates: string[] = []
+
+  if (row.group?.default_mapped_model) candidates.push(row.group.default_mapped_model)
+  if (platform === 'openai') candidates.push(OPENAI_CC_SWITCH_CODEX_MODEL, 'gpt-5.5')
+  if (platform === 'anthropic') candidates.push('claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-sonnet-4-20250514')
+  if (platform === 'gemini') candidates.push('gemini-3-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash')
+  if (platform === 'antigravity') {
+    candidates.push(
+      ...(clientType === 'gemini'
+        ? ['gemini-3.1-pro-high', 'gemini-3-pro-high', 'gemini-2.5-pro']
+        : ['claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-opus-4-6'])
+    )
+  }
+
+  return candidates.find((model) => models.includes(model)) || models[0] || ''
+}
+
+const ccsImportModelOptions = computed(() => {
+  if (!pendingCcsRow.value) return []
+  const platform = pendingCcsRow.value.group?.platform || 'anthropic'
+  return getCcsGroupModels(pendingCcsRow.value).map((model) => ({
+    value: model,
+    label: getModelDisplayMeta(platform, model)?.label || model
+  }))
+})
+
+const importToCcswitch = async (row: ApiKey) => {
+  const platform = row.group?.platform || 'anthropic'
+  pendingCcsRow.value = row
+  if (availableChannels.value.length === 0) {
+    await loadAvailableChannels()
+  }
+  ccsImportClientType.value = platform === 'gemini' || platform === 'antigravity' ? 'gemini' : 'claude'
+  ccsImportModel.value = getCcsDefaultModel(row, ccsImportClientType.value)
+  showCcsImportDialog.value = true
+}
+
+const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType, model: string) => {
   const baseUrl = publicSettings.value?.api_base_url || window.location.origin
   const platform = row.group?.platform || 'anthropic'
 
@@ -1731,7 +1790,8 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
     clientType,
     providerName,
     apiKey: row.key,
-    usageScript
+    usageScript,
+    model
   })
 
   try {
@@ -1749,17 +1809,24 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
   }
 }
 
-const handleCcsClientSelect = (clientType: CcSwitchClientType) => {
-  if (pendingCcsRow.value) {
-    executeCcsImport(pendingCcsRow.value, clientType)
-  }
-  showCcsClientSelect.value = false
-  pendingCcsRow.value = null
+const handleCcsImportSubmit = () => {
+  if (!pendingCcsRow.value || !ccsImportModel.value) return
+  executeCcsImport(pendingCcsRow.value, ccsImportClientType.value, ccsImportModel.value)
+  closeCcsImportDialog()
 }
 
-const closeCcsClientSelect = () => {
-  showCcsClientSelect.value = false
+const handleCcsClientChange = (value: string | number | boolean | null) => {
+  ccsImportClientType.value = value === 'gemini' ? 'gemini' : 'claude'
+  if (pendingCcsRow.value) {
+    ccsImportModel.value = getCcsDefaultModel(pendingCcsRow.value, ccsImportClientType.value)
+  }
+}
+
+const closeCcsImportDialog = () => {
+  showCcsImportDialog.value = false
   pendingCcsRow.value = null
+  ccsImportModel.value = ''
+  ccsImportClientType.value = 'claude'
 }
 
 function formatResetTime(resetAt: string | null): string {
@@ -1779,6 +1846,7 @@ onMounted(() => {
   loadGroups()
   loadUserGroupRates()
   loadPublicSettings()
+  loadAvailableChannels()
   document.addEventListener('click', closeGroupSelector)
   resetTimer = setInterval(() => { now.value = new Date() }, 60000)
 })

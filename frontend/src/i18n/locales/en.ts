@@ -747,6 +747,16 @@ export default {
       geminiCli: 'Gemini CLI',
       geminiCliDesc: 'Import as Gemini CLI configuration',
     },
+    ccsImport: {
+      title: 'Import to CC-Switch',
+      description: 'Choose the client and default model for this import. Models come from the current group supported model list.',
+      clientLabel: 'Client',
+      claudeCode: 'Claude Code',
+      geminiCli: 'Gemini CLI',
+      modelLabel: 'Default Model',
+      modelPlaceholder: 'Select default model',
+      modelHint: 'CC-Switch will use this as the default model for the imported provider.',
+    },
     // Quota and expiration
     quotaLimit: 'Quota Limit',
     quotaAmount: 'Quota Amount (USD)',

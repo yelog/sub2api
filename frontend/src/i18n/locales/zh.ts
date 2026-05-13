@@ -751,6 +751,16 @@ export default {
       geminiCli: 'Gemini CLI',
       geminiCliDesc: '导入为 Gemini CLI 配置'
     },
+    ccsImport: {
+      title: '导入到 CC-Switch',
+      description: '选择导入使用的客户端和默认模型。模型来自当前分组支持的模型列表。',
+      clientLabel: '客户端',
+      claudeCode: 'Claude Code',
+      geminiCli: 'Gemini CLI',
+      modelLabel: '默认模型',
+      modelPlaceholder: '选择默认模型',
+      modelHint: '导入后 CC-Switch 会把该模型作为此 provider 的默认模型。'
+    },
     // 配额和有效期
     quotaLimit: '额度限制',
     quotaAmount: '额度金额 (USD)',
