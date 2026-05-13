@@ -616,15 +616,54 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       }
     }
   }
+  const openAITextModelDefaults = {
+    family: 'gpt-5',
+    attachment: true,
+    reasoning: true,
+    tool_call: true,
+    temperature: true,
+    release_date: '2026-01-01',
+    modalities: {
+      input: ['text', 'image', 'pdf'],
+      output: ['text']
+    },
+    cost: {
+      input: 1,
+      output: 10
+    },
+    options: {
+      store: false
+    }
+  }
+
+  const withOpenAITextCapabilities = (model: Record<string, any>) => ({
+    ...openAITextModelDefaults,
+    ...model,
+    modalities: {
+      ...openAITextModelDefaults.modalities,
+      ...(model.modalities || {})
+    },
+    cost: {
+      ...openAITextModelDefaults.cost,
+      ...(model.cost || {})
+    },
+    options: {
+      ...openAITextModelDefaults.options,
+      ...(model.options || {})
+    }
+  })
+
   const openaiModels = {
-    'gpt-5.2': {
+    'gpt-5.2': withOpenAITextCapabilities({
       name: 'GPT-5.2',
+      release_date: '2025-12-11',
       limit: {
         context: 400000,
         output: 128000
       },
-      options: {
-        store: false
+      cost: {
+        input: 1,
+        output: 10
       },
       variants: {
         low: {},
@@ -632,15 +671,17 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         high: {},
         xhigh: {}
       }
-    },
-    'gpt-5.5': {
+    }),
+    'gpt-5.5': withOpenAITextCapabilities({
       name: 'GPT-5.5',
+      release_date: '2026-05-01',
       limit: {
         context: 1050000,
         output: 128000
       },
-      options: {
-        store: false
+      cost: {
+        input: 7.5,
+        output: 60
       },
       variants: {
         low: {},
@@ -648,15 +689,17 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         high: {},
         xhigh: {}
       }
-    },
-    'gpt-5.4': {
+    }),
+    'gpt-5.4': withOpenAITextCapabilities({
       name: 'GPT-5.4',
+      release_date: '2026-04-01',
       limit: {
         context: 1050000,
         output: 128000
       },
-      options: {
-        store: false
+      cost: {
+        input: 1,
+        output: 10
       },
       variants: {
         low: {},
@@ -664,15 +707,17 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         high: {},
         xhigh: {}
       }
-    },
-    'gpt-5.4-mini': {
+    }),
+    'gpt-5.4-mini': withOpenAITextCapabilities({
       name: 'GPT-5.4 Mini',
+      release_date: '2026-04-01',
       limit: {
         context: 400000,
         output: 128000
       },
-      options: {
-        store: false
+      cost: {
+        input: 0.33,
+        output: 2.64
       },
       variants: {
         low: {},
@@ -680,54 +725,55 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         high: {},
         xhigh: {}
       }
-    },
-    'gpt-5.3-codex-spark': {
+    }),
+    'gpt-5.3-codex-spark': withOpenAITextCapabilities({
       name: 'GPT-5.3 Codex Spark',
+      family: 'gpt-5-codex',
+      release_date: '2026-03-01',
       limit: {
         context: 128000,
         output: 32000
       },
-      options: {
-        store: false
-      },
       variants: {
         low: {},
         medium: {},
         high: {},
         xhigh: {}
       }
-    },
-    'gpt-5.3-codex': {
+    }),
+    'gpt-5.3-codex': withOpenAITextCapabilities({
       name: 'GPT-5.3 Codex',
+      family: 'gpt-5-codex',
+      release_date: '2026-03-01',
       limit: {
         context: 400000,
         output: 128000
       },
-      options: {
-        store: false
-      },
       variants: {
         low: {},
         medium: {},
         high: {},
         xhigh: {}
       }
-    },
-    'codex-mini-latest': {
+    }),
+    'codex-mini-latest': withOpenAITextCapabilities({
       name: 'Codex Mini',
+      family: 'codex-mini',
+      release_date: '2025-01-01',
       limit: {
         context: 200000,
         output: 100000
       },
-      options: {
-        store: false
+      cost: {
+        input: 0.15,
+        output: 0.6
       },
       variants: {
         low: {},
         medium: {},
         high: {}
       }
-    }
+    })
   }
   const geminiModels = {
     'gemini-2.0-flash': {

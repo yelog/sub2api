@@ -753,7 +753,16 @@ export default {
     },
     ccsImport: {
       title: '导入到 CC-Switch',
-      description: '选择导入使用的客户端和默认模型。模型来自当前分组支持的模型列表。',
+      description: '选择导入分类和默认模型。模型来自当前分组支持的模型列表。',
+      appLabel: '导入分类',
+      appHint: '选择要写入 CC-Switch 的分类，例如 Claude Code、Codex、Gemini、OpenCode 或 OpenClaw。',
+      apps: {
+        claude: 'Claude Code',
+        codex: 'Codex',
+        gemini: 'Gemini',
+        opencode: 'OpenCode',
+        openclaw: 'OpenClaw'
+      },
       clientLabel: '客户端',
       claudeCode: 'Claude Code',
       geminiCli: 'Gemini CLI',

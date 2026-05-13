@@ -34,6 +34,24 @@ describe('ccswitchImport utils', () => {
     expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
   })
 
+  it.each([
+    { appType: 'opencode' as const, expected: 'opencode' },
+    { appType: 'openclaw' as const, expected: 'openclaw' }
+  ])('uses explicit $expected CC-Switch app category', ({ appType, expected }) => {
+    const params = paramsFromDeeplink(
+      buildCcSwitchImportDeeplink({
+        ...baseInput,
+        platform: 'openai',
+        clientType: 'claude',
+        appType,
+        model: 'gpt-5.5'
+      })
+    )
+
+    expect(params.get('app')).toBe(expected)
+    expect(params.get('model')).toBe('gpt-5.5')
+  })
+
 
   it('uses the selected model parameter when provided', () => {
     const params = paramsFromDeeplink(

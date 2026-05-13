@@ -942,6 +942,16 @@
           {{ t('keys.ccsImport.description') }}
         </p>
 
+        <div>
+          <label class="input-label">{{ t('keys.ccsImport.appLabel') }}</label>
+          <Select
+            :model-value="ccsImportAppType"
+            :options="ccsImportAppOptions"
+            @update:model-value="handleCcsAppChange"
+          />
+          <p class="input-hint">{{ t('keys.ccsImport.appHint') }}</p>
+        </div>
+
         <div v-if="pendingCcsRow?.group?.platform === 'antigravity'">
           <label class="input-label">{{ t('keys.ccsImport.clientLabel') }}</label>
           <Select
@@ -1076,7 +1086,9 @@ import { formatDateTime } from '@/utils/format'
 import { maskApiKey } from '@/utils/maskApiKey'
 import {
   buildCcSwitchImportDeeplink,
+  getDefaultCcSwitchAppType,
   OPENAI_CC_SWITCH_CODEX_MODEL,
+  type CcSwitchAppType,
   type CcSwitchClientType
 } from '@/utils/ccswitchImport'
 import { getModelsByPlatform, getModelDisplayMeta } from '@/composables/useModelWhitelist'
@@ -1148,6 +1160,7 @@ const showResetRateLimitDialog = ref(false)
 const showUseKeyModal = ref(false)
 const showCcsImportDialog = ref(false)
 const ccsImportClientType = ref<CcSwitchClientType>('claude')
+const ccsImportAppType = ref<CcSwitchAppType>('claude')
 const ccsImportModel = ref('')
 const pendingCcsRow = ref<ApiKey | null>(null)
 const selectedKey = ref<ApiKey | null>(null)
@@ -1704,7 +1717,7 @@ const resetRateLimitUsage = async () => {
   }
 }
 
-const getCcsGroupModels = (row: ApiKey, clientType: CcSwitchClientType = ccsImportClientType.value): string[] => {
+const getCcsGroupModels = (row: ApiKey, clientType: CcSwitchClientType = ccsImportClientType.value, appType: CcSwitchAppType = ccsImportAppType.value): string[] => {
   const platform = row.group?.platform || 'anthropic'
   const channelModels = availableChannels.value
     .flatMap((channel) => channel.platforms)
@@ -1713,25 +1726,31 @@ const getCcsGroupModels = (row: ApiKey, clientType: CcSwitchClientType = ccsImpo
     .flatMap((section) => section.supported_models.map((model) => model.name))
 
   let models = Array.from(new Set(channelModels.length > 0 ? channelModels : getModelsByPlatform(platform)))
-  if (platform === 'antigravity') {
-    const preferredPrefix = clientType === 'gemini' ? 'gemini-' : 'claude-'
-    const preferred = models.filter((model) => model.startsWith(preferredPrefix))
-    const others = models.filter((model) => !model.startsWith(preferredPrefix))
-    models = [...preferred, ...others]
+  const preferredPrefixes: Record<CcSwitchAppType, string[]> = {
+    claude: ['claude-'],
+    codex: ['gpt-', 'codex-'],
+    gemini: ['gemini-'],
+    opencode: ['gpt-', 'codex-', 'claude-', 'gemini-'],
+    openclaw: ['gpt-', 'codex-', 'claude-', 'gemini-']
   }
+  const prefixes = platform === 'antigravity' && appType === getDefaultCcSwitchAppType(platform, clientType)
+    ? [clientType === 'gemini' ? 'gemini-' : 'claude-']
+    : preferredPrefixes[appType]
+  const preferred = models.filter((model) => prefixes.some((prefix) => model.startsWith(prefix)))
+  const others = models.filter((model) => !prefixes.some((prefix) => model.startsWith(prefix)))
 
-  return models
+  return [...preferred, ...others]
 }
 
-const getCcsDefaultModel = (row: ApiKey, clientType: CcSwitchClientType = ccsImportClientType.value): string => {
+const getCcsDefaultModel = (row: ApiKey, clientType: CcSwitchClientType = ccsImportClientType.value, appType: CcSwitchAppType = ccsImportAppType.value): string => {
   const platform = row.group?.platform || 'anthropic'
-  const models = getCcsGroupModels(row, clientType)
+  const models = getCcsGroupModels(row, clientType, appType)
   const candidates: string[] = []
 
   if (row.group?.default_mapped_model) candidates.push(row.group.default_mapped_model)
-  if (platform === 'openai') candidates.push(OPENAI_CC_SWITCH_CODEX_MODEL, 'gpt-5.5')
-  if (platform === 'anthropic') candidates.push('claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-sonnet-4-20250514')
-  if (platform === 'gemini') candidates.push('gemini-3-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash')
+  if (appType === 'codex' || appType === 'opencode' || appType === 'openclaw' || platform === 'openai') candidates.push(OPENAI_CC_SWITCH_CODEX_MODEL, 'gpt-5.5')
+  if (appType === 'claude' || platform === 'anthropic') candidates.push('claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-sonnet-4-20250514')
+  if (appType === 'gemini' || platform === 'gemini') candidates.push('gemini-3-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash')
   if (platform === 'antigravity') {
     candidates.push(
       ...(clientType === 'gemini'
@@ -1743,10 +1762,18 @@ const getCcsDefaultModel = (row: ApiKey, clientType: CcSwitchClientType = ccsImp
   return candidates.find((model) => models.includes(model)) || models[0] || ''
 }
 
+const ccsImportAppOptions = computed(() => [
+  { value: 'claude', label: t('keys.ccsImport.apps.claude') },
+  { value: 'codex', label: t('keys.ccsImport.apps.codex') },
+  { value: 'gemini', label: t('keys.ccsImport.apps.gemini') },
+  { value: 'opencode', label: t('keys.ccsImport.apps.opencode') },
+  { value: 'openclaw', label: t('keys.ccsImport.apps.openclaw') }
+])
+
 const ccsImportModelOptions = computed(() => {
   if (!pendingCcsRow.value) return []
   const platform = pendingCcsRow.value.group?.platform || 'anthropic'
-  return getCcsGroupModels(pendingCcsRow.value).map((model) => ({
+  return getCcsGroupModels(pendingCcsRow.value, ccsImportClientType.value, ccsImportAppType.value).map((model) => ({
     value: model,
     label: getModelDisplayMeta(platform, model)?.label || model
   }))
@@ -1758,12 +1785,13 @@ const importToCcswitch = async (row: ApiKey) => {
   if (availableChannels.value.length === 0) {
     await loadAvailableChannels()
   }
-  ccsImportClientType.value = platform === 'gemini' || platform === 'antigravity' ? 'gemini' : 'claude'
-  ccsImportModel.value = getCcsDefaultModel(row, ccsImportClientType.value)
+  ccsImportClientType.value = platform === 'gemini' ? 'gemini' : 'claude'
+  ccsImportAppType.value = getDefaultCcSwitchAppType(platform, ccsImportClientType.value)
+  ccsImportModel.value = getCcsDefaultModel(row, ccsImportClientType.value, ccsImportAppType.value)
   showCcsImportDialog.value = true
 }
 
-const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType, model: string) => {
+const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType, appType: CcSwitchAppType, model: string) => {
   const baseUrl = publicSettings.value?.api_base_url || window.location.origin
   const platform = row.group?.platform || 'anthropic'
 
@@ -1788,6 +1816,7 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType, model: st
     baseUrl,
     platform,
     clientType,
+    appType,
     providerName,
     apiKey: row.key,
     usageScript,
@@ -1811,14 +1840,26 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType, model: st
 
 const handleCcsImportSubmit = () => {
   if (!pendingCcsRow.value || !ccsImportModel.value) return
-  executeCcsImport(pendingCcsRow.value, ccsImportClientType.value, ccsImportModel.value)
+  executeCcsImport(pendingCcsRow.value, ccsImportClientType.value, ccsImportAppType.value, ccsImportModel.value)
   closeCcsImportDialog()
 }
 
 const handleCcsClientChange = (value: string | number | boolean | null) => {
   ccsImportClientType.value = value === 'gemini' ? 'gemini' : 'claude'
   if (pendingCcsRow.value) {
-    ccsImportModel.value = getCcsDefaultModel(pendingCcsRow.value, ccsImportClientType.value)
+    ccsImportAppType.value = getDefaultCcSwitchAppType(pendingCcsRow.value.group?.platform || 'anthropic', ccsImportClientType.value)
+    ccsImportModel.value = getCcsDefaultModel(pendingCcsRow.value, ccsImportClientType.value, ccsImportAppType.value)
+  }
+}
+
+const handleCcsAppChange = (value: string | number | boolean | null) => {
+  const nextApp = ['claude', 'codex', 'gemini', 'opencode', 'openclaw'].includes(String(value))
+    ? String(value) as CcSwitchAppType
+    : 'claude'
+  ccsImportAppType.value = nextApp
+  ccsImportClientType.value = nextApp === 'gemini' ? 'gemini' : 'claude'
+  if (pendingCcsRow.value) {
+    ccsImportModel.value = getCcsDefaultModel(pendingCcsRow.value, ccsImportClientType.value, ccsImportAppType.value)
   }
 }
 
@@ -1827,6 +1868,7 @@ const closeCcsImportDialog = () => {
   pendingCcsRow.value = null
   ccsImportModel.value = ''
   ccsImportClientType.value = 'claude'
+  ccsImportAppType.value = 'claude'
 }
 
 function formatResetTime(resetAt: string | null): string {

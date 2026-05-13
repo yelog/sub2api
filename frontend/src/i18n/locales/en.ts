@@ -749,7 +749,16 @@ export default {
     },
     ccsImport: {
       title: 'Import to CC-Switch',
-      description: 'Choose the client and default model for this import. Models come from the current group supported model list.',
+      description: 'Choose the target app category and default model for this import. Models come from the current group supported model list.',
+      appLabel: 'Import Category',
+      appHint: 'Choose the CC-Switch category, such as Claude Code, Codex, Gemini, OpenCode, or OpenClaw.',
+      apps: {
+        claude: 'Claude Code',
+        codex: 'Codex',
+        gemini: 'Gemini',
+        opencode: 'OpenCode',
+        openclaw: 'OpenClaw',
+      },
       clientLabel: 'Client',
       claudeCode: 'Claude Code',
       geminiCli: 'Gemini CLI',
