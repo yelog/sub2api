@@ -8,7 +8,6 @@
       <!-- Row 1: platform badge (name bold) -->
       <GroupBadge
         :name="name"
-        :platform="platform"
         :subscription-type="subscriptionType"
         :show-rate="false"
         class="groupOptionItemBadge"
@@ -52,11 +51,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import GroupBadge from './GroupBadge.vue'
-import type { SubscriptionType, GroupPlatform } from '@/types'
+import type { SubscriptionType } from '@/types'
 
 interface Props {
   name: string
-  platform: GroupPlatform
   subscriptionType?: SubscriptionType
   rateMultiplier?: number
   userRateMultiplier?: number | null
@@ -82,18 +80,9 @@ const hasCustomRate = computed(() => {
   )
 })
 
-// Rate pill color matches platform badge color
+// Rate pill uses neutral group styling because groups are platform-agnostic
 const ratePillClass = computed(() => {
-  switch (props.platform) {
-    case 'anthropic':
-      return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
-    case 'openai':
-      return 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-    case 'gemini':
-      return 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400'
-    default: // antigravity and others
-      return 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-400'
-  }
+  return 'bg-gray-100 text-gray-700 dark:bg-dark-600 dark:text-gray-300'
 })
 </script>
 

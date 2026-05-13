@@ -1641,14 +1641,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 			}
 		}
 
-		// 校验源分组的平台是否与新分组一致
+		// 分组不再区分平台：仅校验源分组存在，不限制平台一致性。
 		for _, srcGroupID := range uniqueSourceGroupIDs {
-			srcGroup, err := s.groupRepo.GetByIDLite(ctx, srcGroupID)
-			if err != nil {
+			if _, err := s.groupRepo.GetByIDLite(ctx, srcGroupID); err != nil {
 				return nil, fmt.Errorf("source group %d not found: %w", srcGroupID, err)
-			}
-			if srcGroup.Platform != platform {
-				return nil, fmt.Errorf("source group %d platform mismatch: expected %s, got %s", srcGroupID, platform, srcGroup.Platform)
 			}
 		}
 
@@ -1965,14 +1961,10 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			}
 		}
 
-		// 校验源分组的平台是否与当前分组一致
+		// 分组不再区分平台：仅校验源分组存在，不限制平台一致性。
 		for _, srcGroupID := range uniqueSourceGroupIDs {
-			srcGroup, err := s.groupRepo.GetByIDLite(ctx, srcGroupID)
-			if err != nil {
+			if _, err := s.groupRepo.GetByIDLite(ctx, srcGroupID); err != nil {
 				return nil, fmt.Errorf("source group %d not found: %w", srcGroupID, err)
-			}
-			if srcGroup.Platform != group.Platform {
-				return nil, fmt.Errorf("source group %d platform mismatch: expected %s, got %s", srcGroupID, group.Platform, srcGroup.Platform)
 			}
 		}
 

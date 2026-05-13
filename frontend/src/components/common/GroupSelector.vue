@@ -39,7 +39,6 @@
         />
         <GroupBadge
           :name="group.name"
-          :platform="group.platform"
           :subscription-type="group.subscription_type"
           :rate-multiplier="group.rate_multiplier"
           class="min-w-0 flex-1"
@@ -61,15 +60,16 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { AdminGroup, GroupPlatform } from '@/types'
+import type { AdminGroup } from '@/types'
 
 const { t } = useI18n()
 
 interface Props {
   modelValue: number[]
   groups: AdminGroup[]
-  platform?: GroupPlatform // Optional platform filter
-  mixedScheduling?: boolean // For antigravity accounts: allow anthropic/gemini groups
+  /** @deprecated Groups are platform-agnostic; kept for caller compatibility. */
+  platform?: string
+  mixedScheduling?: boolean
   searchable?: boolean | 'auto'
 }
 
@@ -87,20 +87,9 @@ const isSearchable = computed(() => {
   return props.searchable
 })
 
-// Filter groups by platform if specified
+// Groups are platform-agnostic: do not filter by account platform.
 const filteredGroups = computed(() => {
   let result: AdminGroup[] = props.groups
-  if (props.platform) {
-    // antigravity 账户启用混合调度后，可选择 anthropic/gemini 分组
-    if (props.platform === 'antigravity' && props.mixedScheduling) {
-      result = result.filter(
-        (g) => g.platform === 'antigravity' || g.platform === 'anthropic' || g.platform === 'gemini'
-      )
-    } else {
-      // 默认：只能选择同 platform 的分组
-      result = result.filter((g) => g.platform === props.platform)
-    }
-  }
   if (isSearchable.value && searchText.value) {
     const q = searchText.value.toLowerCase()
     result = result.filter(

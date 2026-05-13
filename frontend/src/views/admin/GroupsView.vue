@@ -22,13 +22,6 @@
               />
             </div>
             <Select
-              v-model="filters.platform"
-              :options="platformFilterOptions"
-              :placeholder="t('admin.groups.allPlatforms')"
-              class="w-44"
-              @change="loadGroups"
-            />
-            <Select
               v-model="filters.status"
               :options="statusOptions"
               :placeholder="t('admin.groups.allStatus')"
@@ -94,24 +87,6 @@
             <span class="font-medium text-gray-900 dark:text-white">{{
               value
             }}</span>
-          </template>
-
-          <template #cell-platform="{ value }">
-            <span
-              :class="[
-                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
-                value === 'anthropic'
-                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                  : value === 'openai'
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                    : value === 'antigravity'
-                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-              ]"
-            >
-              <PlatformIcon :platform="value" size="xs" />
-              {{ t("admin.groups.platforms." + value) }}
-            </span>
           </template>
 
           <template #cell-billing_type="{ row }">
@@ -383,18 +358,6 @@
             class="input"
             :placeholder="t('admin.groups.optionalDescription')"
           ></textarea>
-        </div>
-        <div>
-          <label class="input-label">{{
-            t("admin.groups.form.platform")
-          }}</label>
-          <Select
-            v-model="createForm.platform"
-            :options="platformOptions"
-            data-tour="group-form-platform"
-            @change="createForm.copy_accounts_from_group_ids = []"
-          />
-          <p class="input-hint">{{ t("admin.groups.platformHint") }}</p>
         </div>
         <!-- 从分组复制账号 -->
         <div v-if="copyAccountsGroupOptions.length > 0">
@@ -1565,18 +1528,6 @@
             rows="3"
             class="input"
           ></textarea>
-        </div>
-        <div>
-          <label class="input-label">{{
-            t("admin.groups.form.platform")
-          }}</label>
-          <Select
-            v-model="editForm.platform"
-            :options="platformOptions"
-            :disabled="true"
-            data-tour="group-form-platform"
-          />
-          <p class="input-hint">{{ t("admin.groups.platformNotEditable") }}</p>
         </div>
         <!-- 从分组复制账号（编辑时） -->
         <div v-if="copyAccountsGroupOptionsForEdit.length > 0">
@@ -2753,22 +2704,6 @@
               <div class="font-medium text-gray-900 dark:text-white">
                 {{ group.name }}
               </div>
-              <div class="text-xs text-gray-500 dark:text-gray-400">
-                <span
-                  :class="[
-                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-                    group.platform === 'anthropic'
-                      ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                      : group.platform === 'openai'
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                        : group.platform === 'antigravity'
-                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-                  ]"
-                >
-                  {{ t("admin.groups.platforms." + group.platform) }}
-                </span>
-              </div>
             </div>
             <div class="text-sm text-gray-400">#{{ group.id }}</div>
           </div>
@@ -2849,7 +2784,6 @@ import BaseDialog from "@/components/common/BaseDialog.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import Select from "@/components/common/Select.vue";
-import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
@@ -2872,11 +2806,6 @@ const onboardingStore = useOnboardingStore();
 
 const columns = computed<Column[]>(() => [
   { key: "name", label: t("admin.groups.columns.name"), sortable: true },
-  {
-    key: "platform",
-    label: t("admin.groups.columns.platform"),
-    sortable: true,
-  },
   {
     key: "billing_type",
     label: t("admin.groups.columns.billingType"),
@@ -2920,20 +2849,6 @@ const exclusiveOptions = computed(() => [
   { value: "false", label: t("admin.groups.nonExclusive") },
 ]);
 
-const platformOptions = computed(() => [
-  { value: "anthropic", label: "Anthropic" },
-  { value: "openai", label: "OpenAI" },
-  { value: "gemini", label: "Gemini" },
-  { value: "antigravity", label: "Antigravity" },
-]);
-
-const platformFilterOptions = computed(() => [
-  { value: "", label: t("admin.groups.allPlatforms") },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "openai", label: "OpenAI" },
-  { value: "gemini", label: "Gemini" },
-  { value: "antigravity", label: "Antigravity" },
-]);
 
 const editStatusOptions = computed(() => [
   { value: "active", label: t("admin.accounts.status.active") },
@@ -3019,25 +2934,20 @@ const invalidRequestFallbackOptionsForEdit = computed(() => {
   return options;
 });
 
-// 复制账号的源分组选项（创建时）- 仅包含相同平台且有账号的分组
+// 复制账号的源分组选项（创建时）- 分组不再区分平台，允许从任意有账号的分组复制
 const copyAccountsGroupOptions = computed(() => {
-  const eligibleGroups = groups.value.filter(
-    (g) => g.platform === createForm.platform && (g.account_count || 0) > 0,
-  );
+  const eligibleGroups = groups.value.filter((g) => (g.account_count || 0) > 0);
   return eligibleGroups.map((g) => ({
     value: g.id,
     label: `${g.name} (${g.account_count || 0} 个账号)`,
   }));
 });
 
-// 复制账号的源分组选项（编辑时）- 仅包含相同平台且有账号的分组，排除自身
+// 复制账号的源分组选项（编辑时）- 分组不再区分平台，允许从任意有账号的分组复制，排除自身
 const copyAccountsGroupOptionsForEdit = computed(() => {
   const currentId = editingGroup.value?.id;
   const eligibleGroups = groups.value.filter(
-    (g) =>
-      g.platform === editForm.platform &&
-      (g.account_count || 0) > 0 &&
-      g.id !== currentId,
+    (g) => (g.account_count || 0) > 0 && g.id !== currentId,
   );
   return eligibleGroups.map((g) => ({
     value: g.id,
@@ -3066,7 +2976,6 @@ const capacityMap = ref<
 >(new Map());
 const searchQuery = ref("");
 const filters = reactive({
-  platform: "",
   status: "",
   is_exclusive: "",
 });
@@ -3509,7 +3418,6 @@ const loadGroups = async () => {
       pagination.page,
       pagination.page_size,
       {
-        platform: (filters.platform as GroupPlatform) || undefined,
         status: filters.status as any,
         is_exclusive: filters.is_exclusive
           ? filters.is_exclusive === "true"
