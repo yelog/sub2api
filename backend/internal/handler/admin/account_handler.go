@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/copilot"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -1942,6 +1943,19 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 				})
 			}
 		}
+		response.Success(c, models)
+		return
+	}
+
+	// Handle GitHub Copilot OAuth accounts: use explicit selected models when configured.
+	if account.Platform == service.PlatformCopilot {
+		mapping := account.GetModelMapping()
+		if len(mapping) == 0 {
+			response.Success(c, copilot.DefaultModels())
+			return
+		}
+
+		models := copilot.ModelsFromMapping(mapping)
 		response.Success(c, models)
 		return
 	}

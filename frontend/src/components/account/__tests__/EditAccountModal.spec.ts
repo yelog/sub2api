@@ -70,11 +70,16 @@ const ModelWhitelistSelectorStub = defineComponent({
     modelValue: {
       type: Array,
       default: () => []
+    },
+    platform: {
+      type: String,
+      default: ''
     }
   },
   emits: ['update:modelValue'],
   template: `
     <div>
+      <span data-testid="model-whitelist-platform">{{ platform }}</span>
       <button
         type="button"
         data-testid="rewrite-to-snapshot"
@@ -187,6 +192,37 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
       'gpt-5.2': 'gpt-5.2'
+    })
+  })
+
+  it('renders and persists GitHub Copilot OAuth model whitelist', async () => {
+    const account = buildAccount()
+    account.name = 'Copilot OAuth'
+    account.platform = 'copilot'
+    account.type = 'oauth'
+    account.credentials = {
+      github_token: 'gho-test',
+      copilot_token: 'copilot-test',
+      model_mapping: {
+        'gpt-5.2': 'gpt-5.2'
+      }
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    expect(wrapper.get('[data-testid="model-whitelist-platform"]').text()).toBe('copilot')
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('gpt-5.2')
+
+    await wrapper.get('[data-testid="rewrite-to-snapshot"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gpt-5.2-2025-12-11': 'gpt-5.2-2025-12-11'
     })
   })
 
