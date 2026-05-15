@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   OPENAI_CC_SWITCH_CODEX_MODEL,
-  buildCcSwitchImportDeeplink
+  buildCcSwitchImportDeeplink,
+  type CcSwitchClientType
 } from '@/utils/ccswitchImport'
 import type { GroupPlatform } from '@/types'
 
@@ -18,12 +19,11 @@ describe('ccswitchImport utils', () => {
     usageScript: 'return true'
   }
 
-  it('adds the Codex model parameter for OpenAI imports by default', () => {
+  it('adds the Codex model parameter for Codex imports', () => {
     const params = paramsFromDeeplink(
       buildCcSwitchImportDeeplink({
         ...baseInput,
-        platform: 'openai',
-        clientType: 'claude'
+        clientType: 'codex'
       })
     )
 
@@ -52,7 +52,6 @@ describe('ccswitchImport utils', () => {
     expect(params.get('model')).toBe('gpt-5.5')
   })
 
-
   it('uses the selected model parameter when provided', () => {
     const params = paramsFromDeeplink(
       buildCcSwitchImportDeeplink({
@@ -68,33 +67,36 @@ describe('ccswitchImport utils', () => {
   })
 
   it.each([
-    { platform: 'anthropic' as GroupPlatform, clientType: 'claude' as const, app: 'claude' },
-    { platform: 'gemini' as GroupPlatform, clientType: 'gemini' as const, app: 'gemini' }
-  ])('does not add a model parameter for $platform imports', ({ platform, clientType, app }) => {
+    { platform: 'anthropic' as GroupPlatform, clientType: 'claude' as const, app: 'claude', endpoint: baseInput.baseUrl },
+    { platform: 'gemini' as GroupPlatform, clientType: 'gemini' as const, app: 'gemini', endpoint: baseInput.baseUrl },
+    { platform: 'openai' as GroupPlatform, clientType: 'opencode' as const, app: 'opencode', endpoint: baseInput.baseUrl },
+    { platform: 'openai' as GroupPlatform, clientType: 'openclaw' as const, app: 'openclaw', endpoint: baseInput.baseUrl },
+    { platform: 'antigravity' as GroupPlatform, clientType: 'claude' as const, app: 'claude', endpoint: `${baseInput.baseUrl}/antigravity` },
+    { platform: 'copilot' as GroupPlatform, clientType: 'copilot' as const, app: 'copilot', endpoint: baseInput.baseUrl }
+  ])('does not add a model parameter for $clientType imports', ({ platform, clientType, app, endpoint }) => {
     const params = paramsFromDeeplink(
       buildCcSwitchImportDeeplink({
         ...baseInput,
         platform,
-        clientType
+        clientType: clientType as CcSwitchClientType
       })
     )
 
     expect(params.get('app')).toBe(app)
-    expect(params.get('endpoint')).toBe(baseInput.baseUrl)
+    expect(params.get('endpoint')).toBe(endpoint)
     expect(params.has('model')).toBe(false)
   })
 
-  it('keeps Antigravity imports on the selected client endpoint without a model parameter', () => {
+  it('preserves legacy platform fallback when no explicit target client is supplied', () => {
     const params = paramsFromDeeplink(
       buildCcSwitchImportDeeplink({
         ...baseInput,
-        platform: 'antigravity',
-        clientType: 'gemini'
+        platform: 'openai'
       })
     )
 
-    expect(params.get('app')).toBe('gemini')
-    expect(params.get('endpoint')).toBe(`${baseInput.baseUrl}/antigravity`)
-    expect(params.has('model')).toBe(false)
+    expect(params.get('app')).toBe('codex')
+    expect(params.get('endpoint')).toBe(baseInput.baseUrl)
+    expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
   })
 })

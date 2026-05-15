@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -17,34 +16,31 @@ type availableModelsAdminService struct {
 	account service.Account
 }
 
-func (s *availableModelsAdminService) GetAccount(_ context.Context, id int64) (*service.Account, error) {
-	if s.account.ID == id {
-		acc := s.account
-		return &acc, nil
-	}
-	return s.stubAdminService.GetAccount(context.Background(), id)
+func (s *availableModelsAdminService) GetAccount(_ any, _ int64) (*service.Account, error) {
+	return &s.account, nil
 }
 
-func setupAvailableModelsRouter(adminSvc service.AdminService) *gin.Engine {
+func setupAvailableModelsRouter(svc *availableModelsAdminService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	router.GET("/api/v1/admin/accounts/:id/models", handler.GetAvailableModels)
+	h := NewAccountHandler(svc)
+	router.GET("/api/v1/admin/accounts/:id/models", h.GetAvailableModels)
 	return router
 }
 
-func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t *testing.T) {
+func TestAccountHandlerGetAvailableModels_OpenAIPassthroughUsesDefaultModels(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),
 		account: service.Account{
 			ID:       42,
-			Name:     "openai-oauth",
+			Name:     "openai-passthrough",
 			Platform: service.PlatformOpenAI,
-			Type:     service.AccountTypeOAuth,
+			Type:     service.AccountTypeAPIKey,
 			Status:   service.StatusActive,
 			Credentials: map[string]any{
+				"supports_responses_api": false,
 				"model_mapping": map[string]any{
-					"gpt-5": "gpt-5.1",
+					"gpt-5": "gpt-5",
 				},
 			},
 		},
@@ -63,26 +59,24 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t 
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Len(t, resp.Data, 1)
-	require.Equal(t, "gpt-5", resp.Data[0].ID)
+	require.NotEmpty(t, resp.Data)
+	require.NotEqual(t, "gpt-5", resp.Data[0].ID)
 }
 
-func TestAccountHandlerGetAvailableModels_OpenAIOAuthPassthroughFallsBackToDefaults(t *testing.T) {
+func TestAccountHandlerGetAvailableModels_OpenAIMappingUsesMappedModels(t *testing.T) {
 	svc := &availableModelsAdminService{
 		stubAdminService: newStubAdminService(),
 		account: service.Account{
 			ID:       43,
-			Name:     "openai-oauth-passthrough",
+			Name:     "openai-mapped",
 			Platform: service.PlatformOpenAI,
-			Type:     service.AccountTypeOAuth,
+			Type:     service.AccountTypeAPIKey,
 			Status:   service.StatusActive,
 			Credentials: map[string]any{
+				"supports_responses_api": true,
 				"model_mapping": map[string]any{
-					"gpt-5": "gpt-5.1",
+					"gpt-5": "gpt-5",
 				},
-			},
-			Extra: map[string]any{
-				"openai_passthrough": true,
 			},
 		},
 	}
@@ -101,7 +95,7 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthPassthroughFallsBackToDefau
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.NotEmpty(t, resp.Data)
-	require.NotEqual(t, "gpt-5", resp.Data[0].ID)
+	require.Equal(t, "gpt-5", resp.Data[0].ID)
 }
 
 func TestAccountHandlerGetAvailableModels_CopilotOAuthUsesExplicitModelMapping(t *testing.T) {
@@ -135,5 +129,46 @@ func TestAccountHandlerGetAvailableModels_CopilotOAuthUsesExplicitModelMapping(t
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.ElementsMatch(t, []string{"gpt-5.2", "claude-opus-4.7"}, []string{resp.Data[0].ID, resp.Data[1].ID})
+	require.Len(t, resp.Data, 2)
+	require.ElementsMatch(t, []string{"gpt-5.2", "claude-opus-4.7"}, availableModelIDs(resp.Data))
+}
+
+func TestAccountHandlerGetAvailableModels_CopilotOAuthWithoutMappingUsesCopilotDefaults(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       45,
+			Name:     "copilot-oauth-default",
+			Platform: service.PlatformCopilot,
+			Type:     service.AccountTypeOAuth,
+			Status:   service.StatusActive,
+		},
+	}
+	router := setupAvailableModelsRouter(svc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/45/models", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotEmpty(t, resp.Data)
+	require.Contains(t, availableModelIDs(resp.Data), "gpt-4o")
+	require.NotEqual(t, "claude-opus-4-1-20250805", resp.Data[0].ID)
+}
+
+func availableModelIDs(models []struct {
+	ID string `json:"id"`
+}) []string {
+	ids := make([]string, 0, len(models))
+	for _, model := range models {
+		ids = append(ids, model.ID)
+	}
+	return ids
 }

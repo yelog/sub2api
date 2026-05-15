@@ -704,7 +704,9 @@ export default {
         geminiCli: 'Gemini CLI',
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
-        opencode: 'OpenCode'
+        opencode: 'OpenCode',
+        antigravity: 'Antigravity',
+        copilotCli: 'Copilot CLI'
       },
       antigravity: {
         description: '为 Antigravity 分组配置 API 访问。请根据您使用的客户端选择对应的配置方式。',
@@ -725,6 +727,11 @@ export default {
         title: 'OpenCode 配置示例',
         subtitle: 'opencode.json',
         hint: '配置文件路径：~/.config/opencode/opencode.json（或 opencode.jsonc），不存在需手动创建。可使用默认 provider（openai/anthropic/google）或自定义 provider_id。API Key 支持直接配置或通过客户端 /connect 命令配置。示例仅供参考，模型与选项可按需调整。'
+      },
+      copilot: {
+        description: '为 Copilot CLI 配置当前密钥。可用模型由此密钥当前分组中的账号权限决定。',
+        note: '不同 Copilot CLI 版本的变量名可能不同；如客户端要求 OpenAI 兼容变量，可将同一 Base URL 和 API Key 填入对应配置项。',
+        hint: '如 Copilot CLI 不识别 COPILOT_* 变量，请在客户端配置中使用等价的 Base URL/API Key 字段。'
       }
     },
     customKeyLabel: '自定义密钥',
@@ -745,11 +752,21 @@ export default {
       'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。',
     ccsClientSelect: {
       title: '选择客户端',
-      description: '请选择您要导入到 CC-Switch 的客户端类型：',
+      description: '请选择要导入到 CC-Switch 的目标客户端，导入配置会按客户端协议生成：',
       claudeCode: 'Claude Code',
       claudeCodeDesc: '导入为 Claude Code 配置',
+      codexCli: 'Codex CLI',
+      codexCliDesc: '导入为 Codex CLI 配置',
       geminiCli: 'Gemini CLI',
-      geminiCliDesc: '导入为 Gemini CLI 配置'
+      geminiCliDesc: '导入为 Gemini CLI 配置',
+      opencode: 'OpenCode',
+      opencodeDesc: '导入为 OpenCode 配置',
+      openclaw: 'OpenClaw',
+      openclawDesc: '导入为 OpenClaw 配置',
+      antigravity: 'Antigravity',
+      antigravityDesc: '导入为 Antigravity 兼容配置',
+      copilotCli: 'Copilot CLI',
+      copilotCliDesc: '导入为 GitHub Copilot CLI 配置'
     },
     ccsImport: {
       title: '导入到 CC-Switch',
@@ -1998,7 +2015,7 @@ export default {
     // Groups Management
     groups: {
       title: '分组管理',
-      description: '管理 API 密钥分组和费率配置',
+      description: '管理跨平台账号池、API 密钥分组和费率配置',
       searchGroups: '搜索分组...',
       createGroup: '创建分组',
       editGroup: '编辑分组',
@@ -2012,7 +2029,7 @@ export default {
         "确定要删除订阅分组 '{name}' 吗？此操作会让所有绑定此订阅的用户的 API Key 失效，并删除所有相关的订阅记录。此操作无法撤销。",
       columns: {
         name: '名称',
-        platform: '平台',
+        platform: '兼容平台',
         rateMultiplier: '费率倍数',
         rpmOverride: 'RPM 覆盖',
         rpmOverrideHint: '该用户在此分组的 RPM 上限；留空 = 使用分组默认；0 = 不限制',
@@ -2042,7 +2059,7 @@ export default {
       form: {
         name: '名称',
         description: '描述',
-        platform: '平台',
+        platform: '默认平台',
         rateMultiplier: '费率倍数',
         status: '状态',
         exclusive: '专属分组',
@@ -2057,8 +2074,8 @@ export default {
         rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',
         exclusiveLabel: '专属分组',
         exclusiveHint: '专属分组，可以手动指定给用户',
-        platformLabel: '平台限制',
-        platformPlaceholder: '选择平台（留空则不限制）',
+        platformLabel: '默认平台',
+        platformPlaceholder: '选择默认平台（仅用于兼容旧配置）',
         accountsLabel: '指定账号',
         accountsPlaceholder: '选择账号（留空则不限制）',
         priorityLabel: '优先级',
@@ -2096,7 +2113,7 @@ export default {
       failedToLoad: '加载分组列表失败',
       failedToSave: '保存分组失败',
       failedToDelete: '删除分组失败',
-      allPlatforms: '全部平台',
+      allPlatforms: '全部兼容平台',
       allStatus: '全部状态',
       allGroups: '全部分组',
       exclusiveFilter: '专属',
@@ -2106,8 +2123,9 @@ export default {
       accountsCount: '{count} 个账号',
       enterGroupName: '请输入分组名称',
       optionalDescription: '可选描述',
-      platformHint: '选择此分组关联的平台',
-      platformNotEditable: '创建后不可更改平台',
+      platformHint: '此字段仅作为旧数据和默认协议提示；分组可包含任意平台账号',
+      platformNotEditable: '创建后不可更改默认平台，但账号可跨平台加入此分组',
+      legacyPlatform: '兼容：{platform}',
       noGroupsYet: '暂无分组',
       createFirstGroup: '创建您的第一个分组来组织 API 密钥。',
       creating: '创建中...',

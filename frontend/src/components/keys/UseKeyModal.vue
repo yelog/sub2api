@@ -178,16 +178,7 @@ const activeClientTab = ref<string>('claude')
 
 // Reset tabs when platform changes
 const defaultClientTab = computed(() => {
-  switch (props.platform) {
-    case 'openai':
-      return 'codex'
-    case 'gemini':
-      return 'gemini'
-    case 'antigravity':
-      return 'claude'
-    default:
-      return 'claude'
-  }
+  return 'claude'
 })
 
 watch(() => props.platform, () => {
@@ -265,35 +256,15 @@ const SparkleIcon = {
 
 const clientTabs = computed((): TabConfig[] => {
   if (!props.platform) return []
-  switch (props.platform) {
-    case 'openai': {
-      const tabs: TabConfig[] = [
-        { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
-        { id: 'codex-ws', label: t('keys.useKeyModal.cliTabs.codexCliWs'), icon: TerminalIcon },
-      ]
-      if (props.allowMessagesDispatch) {
-        tabs.push({ id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon })
-      }
-      tabs.push({ id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon })
-      return tabs
-    }
-    case 'gemini':
-      return [
-        { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon },
-        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
-      ]
-    case 'antigravity':
-      return [
-        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
-        { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon },
-        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
-      ]
-    default:
-      return [
-        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
-        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
-      ]
-  }
+  return [
+    { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
+    { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
+    { id: 'codex-ws', label: t('keys.useKeyModal.cliTabs.codexCliWs'), icon: TerminalIcon },
+    { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon },
+    { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon },
+    { id: 'antigravity', label: t('keys.useKeyModal.cliTabs.antigravity'), icon: SparkleIcon },
+    { id: 'copilot', label: t('keys.useKeyModal.cliTabs.copilotCli'), icon: TerminalIcon }
+  ]
 })
 
 // Shell tabs (3 types for environment variable based configs)
@@ -320,39 +291,25 @@ const currentTabs = computed(() => {
 })
 
 const platformDescription = computed(() => {
-  switch (props.platform) {
-    case 'openai':
-      if (activeClientTab.value === 'claude') {
-        return t('keys.useKeyModal.description')
-      }
-      return t('keys.useKeyModal.openai.description')
-    case 'gemini':
-      return t('keys.useKeyModal.gemini.description')
-    case 'antigravity':
-      return t('keys.useKeyModal.antigravity.description')
-    default:
-      return t('keys.useKeyModal.description')
+  if (activeClientTab.value === 'codex' || activeClientTab.value === 'codex-ws') {
+    return t('keys.useKeyModal.openai.description')
   }
+  if (activeClientTab.value === 'gemini') return t('keys.useKeyModal.gemini.description')
+  if (activeClientTab.value === 'antigravity') return t('keys.useKeyModal.antigravity.description')
+  if (activeClientTab.value === 'copilot') return t('keys.useKeyModal.copilot.description')
+  return t('keys.useKeyModal.description')
 })
 
 const platformNote = computed(() => {
-  switch (props.platform) {
-    case 'openai':
-      if (activeClientTab.value === 'claude') {
-        return t('keys.useKeyModal.note')
-      }
-      return activeTab.value === 'windows'
-        ? t('keys.useKeyModal.openai.noteWindows')
-        : t('keys.useKeyModal.openai.note')
-    case 'gemini':
-      return t('keys.useKeyModal.gemini.note')
-    case 'antigravity':
-      return activeClientTab.value === 'claude'
-        ? t('keys.useKeyModal.antigravity.claudeNote')
-        : t('keys.useKeyModal.antigravity.geminiNote')
-    default:
-      return t('keys.useKeyModal.note')
+  if (activeClientTab.value === 'codex' || activeClientTab.value === 'codex-ws') {
+    return activeTab.value === 'windows'
+      ? t('keys.useKeyModal.openai.noteWindows')
+      : t('keys.useKeyModal.openai.note')
   }
+  if (activeClientTab.value === 'gemini') return t('keys.useKeyModal.gemini.note')
+  if (activeClientTab.value === 'antigravity') return t('keys.useKeyModal.antigravity.geminiNote')
+  if (activeClientTab.value === 'copilot') return t('keys.useKeyModal.copilot.note')
+  return t('keys.useKeyModal.note')
 })
 
 const showPlatformNote = computed(() => activeClientTab.value !== 'opencode')
@@ -395,41 +352,31 @@ const currentFiles = computed((): FileConfig[] => {
   })()
 
   if (activeClientTab.value === 'opencode') {
-    switch (props.platform) {
-      case 'anthropic':
-        return [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
-      case 'openai':
-        return [generateOpenCodeConfig('openai', apiBase, apiKey)]
-      case 'gemini':
-        return [generateOpenCodeConfig('gemini', geminiBase, apiKey)]
-      case 'antigravity':
-        return [
-          generateOpenCodeConfig('antigravity-claude', antigravityBase, apiKey, 'opencode.json (Claude)'),
-          generateOpenCodeConfig('antigravity-gemini', antigravityGeminiBase, apiKey, 'opencode.json (Gemini)')
-        ]
-      default:
-        return [generateOpenCodeConfig('openai', apiBase, apiKey)]
-    }
+    return [
+      generateOpenCodeConfig('anthropic', apiBase, apiKey, 'opencode.json (Claude)'),
+      generateOpenCodeConfig('openai', apiBase, apiKey, 'opencode.json (Codex/OpenAI)'),
+      generateOpenCodeConfig('gemini', geminiBase, apiKey, 'opencode.json (Gemini)'),
+      generateOpenCodeConfig('antigravity-claude', antigravityBase, apiKey, 'opencode.json (Antigravity Claude)'),
+      generateOpenCodeConfig('antigravity-gemini', antigravityGeminiBase, apiKey, 'opencode.json (Antigravity Gemini)')
+    ]
   }
 
-  switch (props.platform) {
-    case 'openai':
-      if (activeClientTab.value === 'claude') {
-        return generateAnthropicFiles(baseUrl, apiKey)
-      }
-      if (activeClientTab.value === 'codex-ws') {
-        return generateOpenAIWsFiles(baseUrl, apiKey)
-      }
-      return generateOpenAIFiles(baseUrl, apiKey)
+  switch (activeClientTab.value) {
+    case 'codex':
+      return generateOpenAIFiles(apiBase, apiKey)
+    case 'codex-ws':
+      return generateOpenAIWsFiles(apiBase, apiKey)
     case 'gemini':
-      return [generateGeminiCliContent(baseUrl, apiKey)]
+      return [generateGeminiCliContent(geminiBase, apiKey)]
     case 'antigravity':
-      if (activeClientTab.value === 'gemini') {
-        return [generateGeminiCliContent(`${baseUrl}/antigravity`, apiKey)]
-      }
-      return generateAnthropicFiles(`${baseUrl}/antigravity`, apiKey)
+      return [
+        ...generateAnthropicFiles(antigravityBase, apiKey),
+        generateGeminiCliContent(antigravityGeminiBase, apiKey)
+      ]
+    case 'copilot':
+      return [generateCopilotCliContent(apiBase, apiKey)]
     default:
-      return generateAnthropicFiles(baseUrl, apiKey)
+      return generateAnthropicFiles(apiBase, apiKey)
   }
 })
 
@@ -605,6 +552,34 @@ responses_websockets_v2 = true`
       content: authContent
     }
   ]
+}
+
+function generateCopilotCliContent(baseUrl: string, apiKey: string): FileConfig {
+  let path: string
+  let content: string
+
+  switch (activeTab.value) {
+    case 'cmd':
+      path = 'Command Prompt'
+      content = `set COPILOT_BASE_URL=${baseUrl}
+set COPILOT_API_KEY=${apiKey}`
+      break
+    case 'powershell':
+      path = 'PowerShell'
+      content = `$env:COPILOT_BASE_URL="${baseUrl}"
+$env:COPILOT_API_KEY="${apiKey}"`
+      break
+    default:
+      path = 'Terminal'
+      content = `export COPILOT_BASE_URL="${baseUrl}"
+export COPILOT_API_KEY="${apiKey}"`
+  }
+
+  return {
+    path,
+    content,
+    hint: t('keys.useKeyModal.copilot.hint')
+  }
 }
 
 function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: string, pathLabel?: string): FileConfig {

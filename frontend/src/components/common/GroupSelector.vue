@@ -69,6 +69,7 @@ interface Props {
   groups: AdminGroup[]
   /** @deprecated Groups are platform-agnostic; kept for caller compatibility. */
   platform?: string
+  /** @deprecated Groups are platform-agnostic; kept for caller compatibility. */
   mixedScheduling?: boolean
   searchable?: boolean | 'auto'
 }

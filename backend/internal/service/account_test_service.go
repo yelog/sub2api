@@ -19,6 +19,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/copilot"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
@@ -32,8 +33,9 @@ import (
 var sseDataPrefix = regexp.MustCompile(`^data:\s*`)
 
 const (
-	testClaudeAPIURL   = "https://api.anthropic.com/v1/messages?beta=true"
-	chatgptCodexAPIURL = "https://chatgpt.com/backend-api/codex/responses"
+	testClaudeAPIURL       = "https://api.anthropic.com/v1/messages?beta=true"
+	chatgptCodexAPIURL     = "https://chatgpt.com/backend-api/codex/responses"
+	copilotChatCompletions = "https://api.githubcopilot.com/chat/completions"
 )
 
 // TestEvent represents a SSE event for account testing
@@ -192,7 +194,182 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.routeAntigravityTest(c, account, modelID, prompt)
 	}
 
+	if account.Platform == PlatformCopilot {
+		return s.testCopilotAccountConnection(c, account, modelID)
+	}
+
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+// testCopilotAccountConnection tests a GitHub Copilot OAuth account using Copilot's OpenAI-compatible chat API.
+func (s *AccountTestService) testCopilotAccountConnection(c *gin.Context, account *Account, modelID string) error {
+	ctx := c.Request.Context()
+
+	testModelID := modelID
+	if testModelID == "" {
+		testModelID = openai.DefaultTestModel
+	}
+	testModelID = account.GetMappedModel(testModelID)
+
+	authToken, err := s.resolveCopilotTestToken(ctx, account)
+	if err != nil {
+		_ = s.sendErrorAndEnd(c, err.Error())
+		return nil
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	payload := createCopilotTestPayload(testModelID)
+	payloadBytes, _ := json.Marshal(payload)
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, copilotChatCompletions, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+	req.Header.Set("User-Agent", copilot.DefaultUserAgent)
+	req.Header.Set("Editor-Version", copilot.DefaultEditorVersion)
+	req.Header.Set("Editor-Plugin-Version", copilot.DefaultEditorPluginVersion)
+	req.Header.Set("X-GitHub-Api-Version", copilot.DefaultGitHubAPIVersion)
+	req.Header.Set("Openai-Intent", "conversation-edits")
+	req.Header.Set("x-initiator", "user")
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+		return s.sendErrorAndEnd(c, errMsg)
+	}
+
+	return s.processCopilotChatStream(c, resp.Body)
+}
+
+func (s *AccountTestService) resolveCopilotTestToken(ctx context.Context, account *Account) (string, error) {
+	if account == nil {
+		return "", errors.New("Copilot account not available")
+	}
+
+	if token := strings.TrimSpace(account.GetCredential("copilot_token")); token != "" {
+		if expiresAt := account.GetCredentialAsTime("copilot_token_expires_at"); expiresAt == nil || time.Now().Before(expiresAt.Add(-1*time.Minute)) {
+			return token, nil
+		}
+	}
+
+	githubToken := strings.TrimSpace(account.GetCredential("github_access_token"))
+	if githubToken == "" {
+		return "", errors.New("No Copilot token available")
+	}
+
+	copilotToken, err := copilot.ExchangeToken(ctx, http.DefaultClient, copilot.TokenExchangeURL, githubToken)
+	if err != nil {
+		return "", fmt.Errorf("Failed to refresh Copilot token: %s", err.Error())
+	}
+	if copilotToken == nil || strings.TrimSpace(copilotToken.Token) == "" {
+		return "", errors.New("No Copilot token available")
+	}
+
+	newCredentials := MergeCredentials(account.Credentials, map[string]any{
+		"copilot_token":            copilotToken.Token,
+		"copilot_token_expires_at": copilotToken.ExpiresAt.Unix(),
+		"copilot_token_refresh_at": copilotToken.RefreshAt.Unix(),
+	})
+	if err := persistAccountCredentials(ctx, s.accountRepo, account, newCredentials); err != nil {
+		return "", fmt.Errorf("Failed to save refreshed Copilot token: %s", err.Error())
+	}
+
+	return copilotToken.Token, nil
+}
+
+func createCopilotTestPayload(modelID string) map[string]any {
+	return map[string]any{
+		"model": modelID,
+		"messages": []map[string]any{
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{
+						"type": "text",
+						"text": "hi",
+					},
+				},
+			},
+		},
+		"stream": true,
+	}
+}
+
+func (s *AccountTestService) processCopilotChatStream(c *gin.Context, body io.Reader) error {
+	reader := bufio.NewReader(body)
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+				return nil
+			}
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
+		}
+
+		line = strings.TrimSpace(line)
+		if line == "" || !sseDataPrefix.MatchString(line) {
+			continue
+		}
+
+		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
+		if jsonStr == "[DONE]" {
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
+		}
+
+		var data map[string]any
+		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+			continue
+		}
+
+		choices, _ := data["choices"].([]any)
+		for _, choiceAny := range choices {
+			choice, _ := choiceAny.(map[string]any)
+			if finishReason, _ := choice["finish_reason"].(string); finishReason != "" {
+				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+				return nil
+			}
+
+			delta, _ := choice["delta"].(map[string]any)
+			if content, ok := delta["content"].(string); ok && content != "" {
+				s.sendEvent(c, TestEvent{Type: "content", Text: content})
+			}
+		}
+
+		if errData, ok := data["error"].(map[string]any); ok {
+			errorMsg := "Unknown error"
+			if msg, ok := errData["message"].(string); ok && msg != "" {
+				errorMsg = msg
+			}
+			return s.sendErrorAndEnd(c, errorMsg)
+		}
+	}
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection
@@ -206,7 +383,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	}
 
 	// API Key 账号测试连接时也需要应用通配符模型映射。
-	if account.Type == "apikey" {
+	if account.Type == AccountTypeAPIKey {
 		testModelID = account.GetMappedModel(testModelID)
 	}
 

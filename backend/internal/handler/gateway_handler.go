@@ -37,6 +37,7 @@ var gatewayCompatibilityMetricsLogCounter atomic.Uint64
 // GatewayHandler handles API gateway requests
 type GatewayHandler struct {
 	gatewayService            *service.GatewayService
+	openAIGatewayService      *service.OpenAIGatewayService
 	geminiCompatService       *service.GeminiMessagesCompatService
 	antigravityGatewayService *service.AntigravityGatewayService
 	userService               *service.UserService
@@ -57,6 +58,7 @@ type GatewayHandler struct {
 // NewGatewayHandler creates a new GatewayHandler
 func NewGatewayHandler(
 	gatewayService *service.GatewayService,
+	openAIGatewayService *service.OpenAIGatewayService,
 	geminiCompatService *service.GeminiMessagesCompatService,
 	antigravityGatewayService *service.AntigravityGatewayService,
 	userService *service.UserService,
@@ -92,6 +94,7 @@ func NewGatewayHandler(
 
 	return &GatewayHandler{
 		gatewayService:            gatewayService,
+		openAIGatewayService:      openAIGatewayService,
 		geminiCompatService:       geminiCompatService,
 		antigravityGatewayService: antigravityGatewayService,
 		userService:               userService,
@@ -276,12 +279,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		zap.String("metadata_user_id_raw", parsedReq.MetadataUserID),
 	)
 
-	// 获取平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则使用分组平台
+	// 获取强制平台（/antigravity 路由，中间件已设置 request.Context）。普通网关请求不再使用分组平台决定路由能力。
 	platform := ""
 	if forcePlatform, ok := middleware2.GetForcePlatformFromContext(c); ok {
 		platform = forcePlatform
-	} else if apiKey.Group != nil {
-		platform = apiKey.Group.Platform
 	}
 	sessionKey := sessionHash
 	if platform == service.PlatformGemini && sessionHash != "" {
@@ -322,7 +323,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		}
 
 		for {
-			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
+			selection, err := h.gatewayService.SelectAccountForProtocolWithLoadAwareness(c.Request.Context(), apiKey.GroupID, service.InboundProtocolAnthropicMessages, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
 					reqLog.Warn("gateway.select_account_no_available",
@@ -563,7 +564,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				zap.Bool("has_bound_session", hasBoundSession),
 				zap.Int("failed_account_count", len(fs.FailedAccountIDs)),
 			)
-			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
+			selection, err := h.gatewayService.SelectAccountForProtocolWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, service.InboundProtocolAnthropicMessages, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
 					reqLog.Warn("gateway.select_account_no_available",
@@ -736,15 +737,18 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// ===== 用户消息串行队列 END =====
 
 			// 应用渠道模型映射到请求
+			forwardBody := body
 			if channelMapping.Mapped {
 				parsedReq.Model = channelMapping.MappedModel
 				parsedReq.Body = h.gatewayService.ReplaceModelInBody(parsedReq.Body, channelMapping.MappedModel)
-				body = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
+				forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
+				body = forwardBody
 			}
 
 			// 转发请求 - 根据账号平台分流
 			c.Set("parsed_request", parsedReq)
 			var result *service.ForwardResult
+			var openAIResult *service.OpenAIForwardResult
 			requestCtx := c.Request.Context()
 			if fs.SwitchCount > 0 {
 				requestCtx = service.WithAccountSwitchCount(requestCtx, fs.SwitchCount, h.metadataBridgeEnabled())
@@ -752,9 +756,25 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
-				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, body, hasBoundSession)
+				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, forwardBody, hasBoundSession)
+			} else if account.Platform == service.PlatformOpenAI {
+				if h.openAIGatewayService == nil {
+					err = fmt.Errorf("openai gateway service unavailable")
+				} else {
+					// OpenAI 账号通过 Anthropic /v1/messages 入口调度时，复用 OpenAI Messages Dispatch
+					// 的模型映射默认值，保证选中 OpenAI 账号后走 Responses 兼容协议而不是原生 Anthropic 协议。
+					openAIMessagesMappedModel := resolveOpenAIMessagesDispatchMappedModel(currentAPIKey, reqModel)
+					promptCacheKey := h.openAIGatewayService.ExtractSessionID(c, forwardBody)
+					_, promptCacheKey = resolveOpenAIMessagesMetadataSession("", promptCacheKey, reqModel, forwardBody)
+					openAIResult, err = h.openAIGatewayService.ForwardAsAnthropic(requestCtx, c, account, forwardBody, promptCacheKey, openAIMessagesMappedModel)
+					result = forwardResultFromOpenAI(openAIResult)
+				}
 			} else {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, parsedReq)
+			}
+
+			if err == nil && result == nil {
+				err = fmt.Errorf("empty forward result")
 			}
 
 			// 兜底释放串行锁（正常情况已通过回调提前释放）
@@ -887,6 +907,36 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			requestPayloadHash := service.HashUsageRequestPayload(body)
 			inboundEndpoint := GetInboundEndpoint(c)
 			upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+
+			if account.Platform == service.PlatformOpenAI {
+				openAIUsageResult := openAIResult
+				h.submitUsageRecordTask(func(ctx context.Context) {
+					if err := h.openAIGatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
+						Result:             openAIUsageResult,
+						APIKey:             currentAPIKey,
+						User:               currentAPIKey.User,
+						Account:            account,
+						Subscription:       currentSubscription,
+						InboundEndpoint:    inboundEndpoint,
+						UpstreamEndpoint:   upstreamEndpoint,
+						UserAgent:          userAgent,
+						IPAddress:          clientIP,
+						RequestPayloadHash: requestPayloadHash,
+						APIKeyService:      h.apiKeyService,
+						ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+					}); err != nil {
+						logger.L().With(
+							zap.String("component", "handler.gateway.messages"),
+							zap.Int64("user_id", subject.UserID),
+							zap.Int64("api_key_id", currentAPIKey.ID),
+							zap.Any("group_id", currentAPIKey.GroupID),
+							zap.String("model", reqModel),
+							zap.Int64("account_id", account.ID),
+						).Error("gateway.openai_messages.record_usage_failed", zap.Error(err))
+					}
+				})
+				return
+			}
 
 			if result.ReasoningEffort == nil {
 				result.ReasoningEffort = service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort)
@@ -1871,4 +1921,28 @@ func (h *GatewayHandler) getUserMsgQueueMode(account *service.Account, parsed *s
 		mode = h.cfg.Gateway.UserMessageQueue.GetEffectiveMode()
 	}
 	return mode
+}
+
+func forwardResultFromOpenAI(result *service.OpenAIForwardResult) *service.ForwardResult {
+	if result == nil {
+		return nil
+	}
+	return &service.ForwardResult{
+		RequestID: result.RequestID,
+		Usage: service.ClaudeUsage{
+			InputTokens:              result.Usage.InputTokens,
+			OutputTokens:             result.Usage.OutputTokens,
+			CacheCreationInputTokens: result.Usage.CacheCreationInputTokens,
+			CacheReadInputTokens:     result.Usage.CacheReadInputTokens,
+			ImageOutputTokens:        result.Usage.ImageOutputTokens,
+		},
+		Model:           result.Model,
+		UpstreamModel:   result.UpstreamModel,
+		Stream:          result.Stream,
+		Duration:        result.Duration,
+		FirstTokenMs:    result.FirstTokenMs,
+		ReasoningEffort: result.ReasoningEffort,
+		ImageCount:      result.ImageCount,
+		ImageSize:       result.ImageSize,
+	}
 }
