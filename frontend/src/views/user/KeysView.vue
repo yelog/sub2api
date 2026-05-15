@@ -1731,7 +1731,8 @@ const getCcsGroupModels = (row: ApiKey, clientType: CcSwitchClientType = ccsImpo
     codex: ['gpt-', 'codex-'],
     gemini: ['gemini-'],
     opencode: ['gpt-', 'codex-', 'claude-', 'gemini-'],
-    openclaw: ['gpt-', 'codex-', 'claude-', 'gemini-']
+    openclaw: ['gpt-', 'codex-', 'claude-', 'gemini-'],
+    copilot: ['gpt-', 'codex-']
   }
   const prefixes = platform === 'antigravity' && appType === getDefaultCcSwitchAppType(platform, clientType)
     ? [clientType === 'gemini' ? 'gemini-' : 'claude-']

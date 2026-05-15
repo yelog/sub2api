@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -16,14 +17,14 @@ type availableModelsAdminService struct {
 	account service.Account
 }
 
-func (s *availableModelsAdminService) GetAccount(_ any, _ int64) (*service.Account, error) {
+func (s *availableModelsAdminService) GetAccount(_ context.Context, _ int64) (*service.Account, error) {
 	return &s.account, nil
 }
 
 func setupAvailableModelsRouter(svc *availableModelsAdminService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	h := NewAccountHandler(svc)
+	h := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router.GET("/api/v1/admin/accounts/:id/models", h.GetAvailableModels)
 	return router
 }
@@ -37,10 +38,13 @@ func TestAccountHandlerGetAvailableModels_OpenAIPassthroughUsesDefaultModels(t *
 			Platform: service.PlatformOpenAI,
 			Type:     service.AccountTypeAPIKey,
 			Status:   service.StatusActive,
+			Extra: map[string]any{
+				"openai_passthrough": true,
+			},
 			Credentials: map[string]any{
 				"supports_responses_api": false,
 				"model_mapping": map[string]any{
-					"gpt-5": "gpt-5",
+					"custom-only-test-model": "custom-only-test-model",
 				},
 			},
 		},
@@ -60,7 +64,7 @@ func TestAccountHandlerGetAvailableModels_OpenAIPassthroughUsesDefaultModels(t *
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.NotEmpty(t, resp.Data)
-	require.NotEqual(t, "gpt-5", resp.Data[0].ID)
+	require.NotContains(t, availableModelIDs(resp.Data), "custom-only-test-model")
 }
 
 func TestAccountHandlerGetAvailableModels_OpenAIMappingUsesMappedModels(t *testing.T) {

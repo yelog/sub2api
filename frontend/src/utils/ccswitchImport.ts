@@ -45,7 +45,7 @@ export function getDefaultCcSwitchAppType(
     case 'gemini':
       return 'gemini'
     case 'antigravity':
-      return clientType === 'gemini' ? 'gemini' : 'claude'
+      return 'claude'
     case 'copilot':
       return 'copilot'
     default:

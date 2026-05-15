@@ -69,8 +69,6 @@ describe('ccswitchImport utils', () => {
   it.each([
     { platform: 'anthropic' as GroupPlatform, clientType: 'claude' as const, app: 'claude', endpoint: baseInput.baseUrl },
     { platform: 'gemini' as GroupPlatform, clientType: 'gemini' as const, app: 'gemini', endpoint: baseInput.baseUrl },
-    { platform: 'openai' as GroupPlatform, clientType: 'opencode' as const, app: 'opencode', endpoint: baseInput.baseUrl },
-    { platform: 'openai' as GroupPlatform, clientType: 'openclaw' as const, app: 'openclaw', endpoint: baseInput.baseUrl },
     { platform: 'antigravity' as GroupPlatform, clientType: 'claude' as const, app: 'claude', endpoint: `${baseInput.baseUrl}/antigravity` },
     { platform: 'copilot' as GroupPlatform, clientType: 'copilot' as const, app: 'copilot', endpoint: baseInput.baseUrl }
   ])('does not add a model parameter for $clientType imports', ({ platform, clientType, app, endpoint }) => {
@@ -85,6 +83,23 @@ describe('ccswitchImport utils', () => {
     expect(params.get('app')).toBe(app)
     expect(params.get('endpoint')).toBe(endpoint)
     expect(params.has('model')).toBe(false)
+  })
+
+  it.each([
+    { platform: 'openai' as GroupPlatform, clientType: 'opencode' as const, app: 'opencode' },
+    { platform: 'openai' as GroupPlatform, clientType: 'openclaw' as const, app: 'openclaw' }
+  ])('adds the default OpenAI-compatible model parameter for $clientType imports', ({ platform, clientType, app }) => {
+    const params = paramsFromDeeplink(
+      buildCcSwitchImportDeeplink({
+        ...baseInput,
+        platform,
+        clientType: clientType as CcSwitchClientType
+      })
+    )
+
+    expect(params.get('app')).toBe(app)
+    expect(params.get('endpoint')).toBe(baseInput.baseUrl)
+    expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
   })
 
   it('preserves legacy platform fallback when no explicit target client is supplied', () => {
