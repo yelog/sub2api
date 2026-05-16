@@ -326,6 +326,14 @@ func (s *stubAdminService) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 	return out, nil
 }
 
+func (s *stubAdminService) GetAccountBillingArchitecture(ctx context.Context, accountID int64, opts service.BillingArchitectureOptions) (*service.AccountBillingArchitecture, error) {
+	account, err := s.GetAccount(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	return service.NewAccountBillingArchitecture(account), nil
+}
+
 func (s *stubAdminService) CreateAccount(ctx context.Context, input *service.CreateAccountInput) (*service.Account, error) {
 	s.mu.Lock()
 	s.createdAccounts = append(s.createdAccounts, input)

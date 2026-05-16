@@ -6,6 +6,7 @@
 import { apiClient } from '../client'
 import type {
   Account,
+  AccountBillingArchitecture,
   CreateAccountRequest,
   UpdateAccountRequest,
   PaginatedResponse,
@@ -122,6 +123,16 @@ export async function listWithEtag(
  */
 export async function getById(id: number): Promise<Account> {
   const { data } = await apiClient.get<Account>(`/admin/accounts/${id}`)
+  return data
+}
+
+export async function getBillingArchitecture(
+  id: number,
+  options?: { user_id?: number; group_id?: number }
+): Promise<AccountBillingArchitecture> {
+  const { data } = await apiClient.get<AccountBillingArchitecture>(`/admin/accounts/${id}/billing-architecture`, {
+    params: options
+  })
   return data
 }
 

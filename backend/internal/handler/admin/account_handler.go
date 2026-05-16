@@ -170,7 +170,8 @@ type CheckMixedChannelRequest struct {
 // AccountWithConcurrency extends Account with real-time concurrency info
 type AccountWithConcurrency struct {
 	*dto.Account
-	CurrentConcurrency int `json:"current_concurrency"`
+	CurrentConcurrency  int                                 `json:"current_concurrency"`
+	BillingArchitecture *service.AccountBillingArchitecture `json:"billing_architecture,omitempty"`
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
@@ -181,8 +182,9 @@ const accountListGroupUngroupedQueryValue = "ungrouped"
 
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
 	item := AccountWithConcurrency{
-		Account:            dto.AccountFromService(account),
-		CurrentConcurrency: 0,
+		Account:             dto.AccountFromService(account),
+		CurrentConcurrency:  0,
+		BillingArchitecture: service.NewAccountBillingArchitecture(account),
 	}
 	if account == nil {
 		return item
@@ -353,8 +355,9 @@ func (h *AccountHandler) List(c *gin.Context) {
 	for i := range accounts {
 		acc := &accounts[i]
 		item := AccountWithConcurrency{
-			Account:            dto.AccountFromService(acc),
-			CurrentConcurrency: concurrencyCounts[acc.ID],
+			Account:             dto.AccountFromService(acc),
+			CurrentConcurrency:  concurrencyCounts[acc.ID],
+			BillingArchitecture: service.NewAccountBillingArchitecture(acc),
 		}
 
 		// 添加窗口费用（仅当启用时）
@@ -465,6 +468,42 @@ func (h *AccountHandler) GetByID(c *gin.Context) {
 	}
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
+// GetBillingArchitecture handles getting account billing architecture details.
+// GET /api/v1/admin/accounts/:id/billing-architecture
+func (h *AccountHandler) GetBillingArchitecture(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	opts := service.BillingArchitectureOptions{}
+	if raw := strings.TrimSpace(c.Query("user_id")); raw != "" {
+		userID, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil || userID <= 0 {
+			response.BadRequest(c, "Invalid user_id")
+			return
+		}
+		opts.UserID = userID
+	}
+	if raw := strings.TrimSpace(c.Query("group_id")); raw != "" {
+		groupID, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil || groupID <= 0 {
+			response.BadRequest(c, "Invalid group_id")
+			return
+		}
+		opts.GroupID = groupID
+	}
+
+	arch, err := h.adminService.GetAccountBillingArchitecture(c.Request.Context(), accountID, opts)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, arch)
 }
 
 // CheckMixedChannel handles checking mixed channel risk for account-group binding.

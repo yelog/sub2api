@@ -2335,6 +2335,14 @@ func (s *GatewayService) listSchedulableAccountsForModel(ctx context.Context, gr
 		return s.listSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 	}
 
+	if s.schedulerSnapshot != nil {
+		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
+		return accounts, true, err
+	}
+	if s.accountRepo == nil {
+		return nil, true, ErrNoAvailableAccounts
+	}
+
 	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, *groupID)
 	if err != nil {
 		slog.Debug("account_scheduling_list_cross_platform_failed",

@@ -291,7 +291,11 @@
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-rate_multiplier="{ row }">
-            <span class="text-sm font-mono text-gray-700 dark:text-gray-300">
+            <AccountBillingInfo
+              v-if="row.billing_architecture"
+              :architecture="row.billing_architecture"
+            />
+            <span v-else class="text-sm font-mono text-gray-700 dark:text-gray-300">
               {{ (row.rate_multiplier ?? 1).toFixed(2) }}x
             </span>
           </template>
@@ -405,6 +409,7 @@ import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
+import AccountBillingInfo from '@/components/account/AccountBillingInfo.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'

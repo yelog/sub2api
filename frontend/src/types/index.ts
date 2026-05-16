@@ -807,6 +807,7 @@ export interface Account {
   current_concurrency?: number // Real-time concurrency count from Redis
   priority: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
+  billing_architecture?: AccountBillingArchitecture
   status: 'active' | 'inactive' | 'error'
   error_message: string | null
   last_used_at: string | null
@@ -883,6 +884,26 @@ export interface Account {
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
+}
+
+export interface AccountBillingArchitectureGroup {
+  id: number
+  name: string
+  platform: AccountPlatform | string
+  rate_multiplier: number
+  subscription_type: string
+}
+
+export interface AccountBillingArchitecture {
+  account_id: number
+  platform: AccountPlatform | string
+  type: AccountType | string
+  account_rate_multiplier?: number | null
+  effective_account_rate_multiplier: number
+  groups: AccountBillingArchitectureGroup[]
+  effective_user_rate_multiplier?: number | null
+  user_rate_source?: 'system_default' | 'group_default' | 'user_group_override' | string
+  cost_semantics: Record<string, string>
 }
 
 // Account Usage types
