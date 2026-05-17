@@ -796,8 +796,8 @@ export interface Account {
   platform: AccountPlatform
   type: AccountType
   credentials?: Record<string, unknown>
-  // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
-  extra?: (CodexUsageSnapshot & OpenAICompactState & {
+  // Extra fields including Codex usage, OpenAI compact/fast capability, and model-level rate limits.
+  extra?: (CodexUsageSnapshot & OpenAICompactState & OpenAIFastPassthroughState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
   } & Record<string, unknown>)
@@ -1014,6 +1014,10 @@ export interface OpenAICompactState {
   openai_compact_last_error?: string
 }
 
+export interface OpenAIFastPassthroughState {
+  openai_fast_passthrough_enabled?: boolean
+}
+
 export interface CreateAccountRequest {
   name: string
   notes?: string | null
@@ -1029,6 +1033,7 @@ export interface CreateAccountRequest {
   group_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  openai_fast_passthrough_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
 }
 
@@ -1048,6 +1053,7 @@ export interface UpdateAccountRequest {
   group_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  openai_fast_passthrough_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
 }
 
@@ -1189,6 +1195,7 @@ export interface CodexSessionImportResult {
 
 export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription' | 'invitation'
 export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2'
+export type OpenAIFastFilter = 'all' | 'fast' | 'non_fast'
 
 export interface UsageLog {
   id: number
@@ -1581,6 +1588,7 @@ export interface UsageQueryParams {
   request_type?: UsageRequestType
   stream?: boolean
   billing_type?: number | null
+  openai_fast?: OpenAIFastFilter
   start_date?: string
   end_date?: string
   sort_by?: string

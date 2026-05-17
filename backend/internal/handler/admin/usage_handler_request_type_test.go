@@ -15,9 +15,12 @@ import (
 
 type adminUsageRepoCapture struct {
 	service.UsageLogRepository
-	listParams   pagination.PaginationParams
-	listFilters  usagestats.UsageLogFilters
-	statsFilters usagestats.UsageLogFilters
+	listParams       pagination.PaginationParams
+	listFilters      usagestats.UsageLogFilters
+	statsFilters     usagestats.UsageLogFilters
+	allStatsFilters  usagestats.UsageLogFilters
+	fastStatsFilters usagestats.UsageLogFilters
+	statsCalls       int
 }
 
 func (s *adminUsageRepoCapture) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
@@ -32,8 +35,15 @@ func (s *adminUsageRepoCapture) ListWithFilters(ctx context.Context, params pagi
 }
 
 func (s *adminUsageRepoCapture) GetStatsWithFilters(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error) {
+	s.statsCalls++
 	s.statsFilters = filters
-	return &usagestats.UsageStats{}, nil
+	if filters.OpenAIFastBucket == usagestats.OpenAIFastBucketAll {
+		s.allStatsFilters = filters
+	}
+	if filters.OpenAIFastBucket == usagestats.OpenAIFastBucketFast {
+		s.fastStatsFilters = filters
+	}
+	return &usagestats.UsageStats{TotalRequests: int64(s.statsCalls)}, nil
 }
 
 func newAdminUsageRequestTypeTestRouter(repo *adminUsageRepoCapture) *gin.Engine {
@@ -117,6 +127,71 @@ func TestAdminUsageStatsRequestTypePriority(t *testing.T) {
 	require.NotNil(t, repo.statsFilters.RequestType)
 	require.Equal(t, int16(service.RequestTypeStream), *repo.statsFilters.RequestType)
 	require.Nil(t, repo.statsFilters.Stream)
+}
+
+func TestAdminUsageStatsOpenAIFastBucketFilter(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage/stats?openai_fast=fast", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, usagestats.OpenAIFastBucketFast, repo.statsFilters.OpenAIFastBucket)
+}
+
+func TestAdminUsageStatsOpenAINonFastBucketFilter(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage/stats?openai_fast=non_fast", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, usagestats.OpenAIFastBucketNonFast, repo.statsFilters.OpenAIFastBucket)
+}
+
+func TestAdminUsageStatsInvalidOpenAIFastBucket(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage/stats?openai_fast=priority", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAdminUsageStatsDefaultIncludesFastAndNonFastBreakdown(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage/stats", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 3, repo.statsCalls)
+	require.Equal(t, usagestats.OpenAIFastBucketAll, repo.allStatsFilters.OpenAIFastBucket)
+	require.Equal(t, usagestats.OpenAIFastBucketFast, repo.fastStatsFilters.OpenAIFastBucket)
+	require.Contains(t, rec.Body.String(), "fast_stats")
+	require.Contains(t, rec.Body.String(), "non_fast_stats")
+}
+
+func TestAdminUsageStatsBucketFilterDoesNotFetchBreakdown(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage/stats?openai_fast=fast", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, repo.statsCalls)
+	require.NotContains(t, rec.Body.String(), "fast_stats")
+	require.NotContains(t, rec.Body.String(), "non_fast_stats")
 }
 
 func TestAdminUsageStatsInvalidRequestType(t *testing.T) {

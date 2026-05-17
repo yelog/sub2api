@@ -3170,6 +3170,14 @@ export default {
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
+        fastPassthrough: 'Allow user /fast mode',
+        fastPassthroughBadge: 'Fast passthrough',
+        fastPassthroughDescOff:
+          'Default off. When off, Codex /fast service_tier=fast/priority is removed before upstream calls, so requests use normal priority.',
+        fastPassthroughDescOn:
+          'When on, Codex /fast is normalized and forwarded as OpenAI service_tier=priority for this account.',
+        fastPassthroughWarning:
+          'This may consume fast/priority quota and affect cost or rate limits. Enable only for accounts intended to serve Fast traffic.',
         responsesWebsocketsV2: 'Responses WebSocket v2',
         responsesWebsocketsV2Desc:
           'Disabled by default. Enable to allow responses_websockets_v2 capability (still gated by global and account-type switches).',

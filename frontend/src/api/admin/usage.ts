@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../client'
-import type { AdminUsageLog, UsageQueryParams, PaginatedResponse, UsageRequestType } from '@/types'
+import type { AdminUsageLog, UsageQueryParams, PaginatedResponse, UsageRequestType, OpenAIFastFilter } from '@/types'
 import type { EndpointStat } from '@/types'
 
 // ==================== Types ====================
@@ -22,6 +22,8 @@ export interface AdminUsageStatsResponse {
   endpoints?: EndpointStat[]
   upstream_endpoints?: EndpointStat[]
   endpoint_paths?: EndpointStat[]
+  fast_stats?: AdminUsageStatsResponse
+  non_fast_stats?: AdminUsageStatsResponse
 }
 
 export interface SimpleUser {
@@ -116,6 +118,7 @@ export async function getStats(params: {
   model?: string
   request_type?: UsageRequestType
   stream?: boolean
+  openai_fast?: OpenAIFastFilter
   period?: string
   start_date?: string
   end_date?: string

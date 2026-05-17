@@ -7,7 +7,27 @@ const (
 	ModelSourceRequested = "requested"
 	ModelSourceUpstream  = "upstream"
 	ModelSourceMapping   = "mapping"
+
+	OpenAIFastBucketAll     = "all"
+	OpenAIFastBucketFast    = "fast"
+	OpenAIFastBucketNonFast = "non_fast"
 )
+
+func IsValidOpenAIFastBucket(bucket string) bool {
+	switch bucket {
+	case "", OpenAIFastBucketAll, OpenAIFastBucketFast, OpenAIFastBucketNonFast:
+		return true
+	default:
+		return false
+	}
+}
+
+func NormalizeOpenAIFastBucket(bucket string) string {
+	if bucket == OpenAIFastBucketFast || bucket == OpenAIFastBucketNonFast {
+		return bucket
+	}
+	return OpenAIFastBucketAll
+}
 
 func IsValidModelSource(source string) bool {
 	switch source {
@@ -234,17 +254,20 @@ type UserDashboardStats struct {
 
 // UsageLogFilters represents filters for usage log queries
 type UsageLogFilters struct {
-	UserID      int64
-	APIKeyID    int64
-	AccountID   int64
-	GroupID     int64
-	Model       string
-	RequestType *int16
-	Stream      *bool
-	BillingType *int8
-	BillingMode string
-	StartTime   *time.Time
-	EndTime     *time.Time
+	UserID    int64
+	APIKeyID  int64
+	AccountID int64
+	GroupID   int64
+	Model     string
+	// OpenAIFastBucket filters OpenAI Fast usage by service_tier.
+	// fast = service_tier == 'priority'; non_fast = service_tier IS NULL OR service_tier != 'priority'; empty/all = no filter.
+	OpenAIFastBucket string
+	RequestType      *int16
+	Stream           *bool
+	BillingType      *int8
+	BillingMode      string
+	StartTime        *time.Time
+	EndTime          *time.Time
 	// ExactTotal requests exact COUNT(*) for pagination. Default false for fast large-table paging.
 	ExactTotal bool
 }
@@ -263,6 +286,8 @@ type UsageStats struct {
 	Endpoints         []EndpointStat `json:"endpoints,omitempty"`
 	UpstreamEndpoints []EndpointStat `json:"upstream_endpoints,omitempty"`
 	EndpointPaths     []EndpointStat `json:"endpoint_paths,omitempty"`
+	FastStats         *UsageStats    `json:"fast_stats,omitempty"`
+	NonFastStats      *UsageStats    `json:"non_fast_stats,omitempty"`
 }
 
 // BatchUserUsageStats represents usage stats for a single user

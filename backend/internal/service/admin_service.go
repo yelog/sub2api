@@ -274,6 +274,9 @@ type CreateAccountInput struct {
 	GroupIDs           []int64
 	ExpiresAt          *int64
 	AutoPauseOnExpired *bool
+	// OpenAIFastPassthroughEnabled controls whether OpenAI accounts pass user service_tier=fast/priority upstream.
+	// nil means default false on create.
+	OpenAIFastPassthroughEnabled *bool
 	// SkipDefaultGroupBind prevents auto-binding to platform default group when GroupIDs is empty.
 	SkipDefaultGroupBind bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
@@ -282,21 +285,22 @@ type CreateAccountInput struct {
 }
 
 type UpdateAccountInput struct {
-	Name                  string
-	Notes                 *string
-	Type                  string // Account type: oauth, setup-token, apikey
-	Credentials           map[string]any
-	Extra                 map[string]any
-	ProxyID               *int64
-	Concurrency           *int     // 使用指针区分"未提供"和"设置为0"
-	Priority              *int     // 使用指针区分"未提供"和"设置为0"
-	RateMultiplier        *float64 // 账号计费倍率（>=0，允许 0）
-	LoadFactor            *int
-	Status                string
-	GroupIDs              *[]int64
-	ExpiresAt             *int64
-	AutoPauseOnExpired    *bool
-	SkipMixedChannelCheck bool // 跳过混合渠道检查（用户已确认风险）
+	Name                         string
+	Notes                        *string
+	Type                         string // Account type: oauth, setup-token, apikey
+	Credentials                  map[string]any
+	Extra                        map[string]any
+	ProxyID                      *int64
+	Concurrency                  *int     // 使用指针区分"未提供"和"设置为0"
+	Priority                     *int     // 使用指针区分"未提供"和"设置为0"
+	RateMultiplier               *float64 // 账号计费倍率（>=0，允许 0）
+	LoadFactor                   *int
+	Status                       string
+	GroupIDs                     *[]int64
+	ExpiresAt                    *int64
+	AutoPauseOnExpired           *bool
+	OpenAIFastPassthroughEnabled *bool
+	SkipMixedChannelCheck        bool // 跳过混合渠道检查（用户已确认风险）
 }
 
 // BulkUpdateAccountsInput describes the payload for bulk updating accounts.
@@ -2366,13 +2370,15 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		}
 	}
 
+	accountExtra := applyOpenAIFastPassthroughSetting(input.Extra, input.Platform, input.OpenAIFastPassthroughEnabled, nil)
+
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
 		Platform:    input.Platform,
 		Type:        input.Type,
 		Credentials: input.Credentials,
-		Extra:       input.Extra,
+		Extra:       accountExtra,
 		ProxyID:     input.ProxyID,
 		Concurrency: input.Concurrency,
 		Priority:    input.Priority,
@@ -2468,6 +2474,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库。
 	if input.Extra != nil {
+		input.Extra = applyOpenAIFastPassthroughSetting(input.Extra, account.Platform, input.OpenAIFastPassthroughEnabled, nil)
 		// 保留配额用量字段，防止编辑账号时意外重置
 		for _, key := range []string{"quota_used", "quota_daily_used", "quota_daily_start", "quota_weekly_used", "quota_weekly_start"} {
 			if v, ok := account.Extra[key]; ok {
@@ -2491,6 +2498,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, err
 		}
 		ComputeQuotaResetAt(account.Extra)
+	}
+	if input.Extra == nil && input.OpenAIFastPassthroughEnabled != nil {
+		account.Extra = applyOpenAIFastPassthroughSetting(account.Extra, account.Platform, input.OpenAIFastPassthroughEnabled, nil)
 	}
 	if input.ProxyID != nil {
 		// 0 表示清除代理（前端发送 0 而不是 null 来表达清除意图）

@@ -226,7 +226,7 @@ const getGranularityForRange = (start: string, end: string): 'day' | 'hour' => {
 }
 const defaultRange = getLast24HoursRangeDates()
 const startDate = ref(defaultRange.start); const endDate = ref(defaultRange.end)
-const filters = ref<AdminUsageQueryParams>({ user_id: undefined, model: undefined, group_id: undefined, request_type: undefined, billing_type: null, start_date: startDate.value, end_date: endDate.value })
+const filters = ref<AdminUsageQueryParams>({ user_id: undefined, model: undefined, group_id: undefined, request_type: undefined, billing_type: null, openai_fast: 'all', start_date: startDate.value, end_date: endDate.value })
 const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
 const sortState = reactive({
   sort_by: 'created_at',
@@ -438,7 +438,7 @@ const resetFilters = () => {
   const range = getLast24HoursRangeDates()
   startDate.value = range.start
   endDate.value = range.end
-  filters.value = { start_date: startDate.value, end_date: endDate.value, request_type: undefined, billing_type: null, billing_mode: undefined }
+  filters.value = { start_date: startDate.value, end_date: endDate.value, request_type: undefined, billing_type: null, billing_mode: undefined, openai_fast: 'all' }
   granularity.value = getGranularityForRange(startDate.value, endDate.value)
   applyFilters()
 }
@@ -460,6 +460,10 @@ const getRequestTypeLabel = (log: AdminUsageLog): string => {
   return t('usage.unknown')
 }
 
+const getOpenAIFastBucket = (log: AdminUsageLog): 'fast' | 'non_fast' => {
+  return log.service_tier === 'priority' ? 'fast' : 'non_fast'
+}
+
 const exportToExcel = async () => {
   if (exporting.value) return; exporting.value = true; exportProgress.show = true
   const c = new AbortController(); exportAbortController = c
@@ -470,7 +474,7 @@ const exportToExcel = async () => {
       t('usage.time'), t('admin.usage.user'), t('usage.apiKeyFilter'),
       t('admin.usage.account'), t('usage.model'), t('usage.upstreamModel'), t('usage.reasoningEffort'), t('admin.usage.group'),
       t('usage.inboundEndpoint'), t('usage.upstreamEndpoint'),
-      t('usage.type'),
+      t('usage.type'), 'fast_bucket',
       t('admin.usage.inputTokens'), t('admin.usage.outputTokens'),
       t('admin.usage.cacheReadTokens'), t('admin.usage.cacheCreationTokens'),
       t('admin.usage.inputCost'), t('admin.usage.outputCost'),
@@ -489,7 +493,7 @@ const exportToExcel = async () => {
       const rows = (res.items || []).map((log: AdminUsageLog) => [
         log.created_at, log.user?.email || '', log.api_key?.name || '', log.account?.name || '', log.model,
         log.upstream_model || '', formatReasoningEffort(log.reasoning_effort), log.group?.name || '',
-        log.inbound_endpoint || '', log.upstream_endpoint || '', getRequestTypeLabel(log),
+        log.inbound_endpoint || '', log.upstream_endpoint || '', getRequestTypeLabel(log), getOpenAIFastBucket(log),
         log.input_tokens, log.output_tokens, log.cache_read_tokens, log.cache_creation_tokens,
         log.input_cost?.toFixed(6) || '0.000000', log.output_cost?.toFixed(6) || '0.000000',
         log.cache_read_cost?.toFixed(6) || '0.000000', log.cache_creation_cost?.toFixed(6) || '0.000000',

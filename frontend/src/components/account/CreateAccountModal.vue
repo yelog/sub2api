@@ -2678,6 +2678,47 @@
         </div>
       </div>
 
+      <!-- OpenAI /fast 参数透传开关（OAuth/API Key） -->
+      <div
+        v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <label class="input-label mb-0">{{ t('admin.accounts.openai.fastPassthrough') }}</label>
+              <span
+                v-if="openaiFastPassthroughEnabled"
+                class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+              >
+                {{ t('admin.accounts.openai.fastPassthroughBadge') }}
+              </span>
+            </div>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t(openaiFastPassthroughEnabled ? 'admin.accounts.openai.fastPassthroughDescOn' : 'admin.accounts.openai.fastPassthroughDescOff') }}
+            </p>
+            <p v-if="openaiFastPassthroughEnabled" class="mt-1 text-xs text-amber-600 dark:text-amber-300">
+              {{ t('admin.accounts.openai.fastPassthroughWarning') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="openaiFastPassthroughEnabled = !openaiFastPassthroughEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openaiFastPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openaiFastPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- OpenAI WS Mode 三态（off/ctx_pool/passthrough） -->
       <div
         v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
@@ -3456,6 +3497,7 @@ const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
+const openaiFastPassthroughEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -3826,6 +3868,7 @@ watch(
     }
     if (newPlatform !== 'openai') {
       openaiPassthroughEnabled.value = false
+      openaiFastPassthroughEnabled.value = false
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
@@ -4223,6 +4266,7 @@ const resetForm = () => {
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
+  openaiFastPassthroughEnabled.value = false
   openAICompactMode.value = 'auto'
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -4300,6 +4344,7 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     delete extra.openai_passthrough
     delete extra.openai_oauth_passthrough
   }
+  extra.openai_fast_passthrough_enabled = openaiFastPassthroughEnabled.value === true
 
   if (accountCategory.value === 'oauth-based' && codexCLIOnlyEnabled.value) {
     extra.codex_cli_only = true
@@ -4623,7 +4668,8 @@ const handleSubmit = async () => {
     ...form,
     group_ids: form.group_ids,
     extra,
-    auto_pause_on_expired: autoPauseOnExpired.value
+    auto_pause_on_expired: autoPauseOnExpired.value,
+    openai_fast_passthrough_enabled: form.platform === 'openai' ? openaiFastPassthroughEnabled.value : undefined
   })
 }
 
@@ -4734,7 +4780,8 @@ const createAccountAndFinish = async (
     rate_multiplier: form.rate_multiplier,
     group_ids: form.group_ids,
     expires_at: form.expires_at,
-    auto_pause_on_expired: autoPauseOnExpired.value
+    auto_pause_on_expired: autoPauseOnExpired.value,
+    openai_fast_passthrough_enabled: platform === 'openai' ? openaiFastPassthroughEnabled.value : undefined
   })
 }
 
@@ -4801,7 +4848,8 @@ const handleOpenAIExchange = async (authCode: string) => {
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
         expires_at: form.expires_at,
-        auto_pause_on_expired: autoPauseOnExpired.value
+        auto_pause_on_expired: autoPauseOnExpired.value,
+        openai_fast_passthrough_enabled: openaiFastPassthroughEnabled.value
       })
       appStore.showSuccess(t('admin.accounts.accountCreated'))
     }

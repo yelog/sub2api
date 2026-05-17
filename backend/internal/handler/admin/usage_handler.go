@@ -111,6 +111,12 @@ func (h *UsageHandler) List(c *gin.Context) {
 
 	model := c.Query("model")
 	billingMode := strings.TrimSpace(c.Query("billing_mode"))
+	openAIFastBucket := strings.TrimSpace(c.Query("openai_fast"))
+	if !usagestats.IsValidOpenAIFastBucket(openAIFastBucket) {
+		response.BadRequest(c, "Invalid openai_fast value, use all, fast, or non_fast")
+		return
+	}
+	openAIFastBucket = usagestats.NormalizeOpenAIFastBucket(openAIFastBucket)
 
 	var requestType *int16
 	var stream *bool
@@ -172,18 +178,19 @@ func (h *UsageHandler) List(c *gin.Context) {
 		SortOrder: c.DefaultQuery("sort_order", "desc"),
 	}
 	filters := usagestats.UsageLogFilters{
-		UserID:      userID,
-		APIKeyID:    apiKeyID,
-		AccountID:   accountID,
-		GroupID:     groupID,
-		Model:       model,
-		RequestType: requestType,
-		Stream:      stream,
-		BillingType: billingType,
-		BillingMode: billingMode,
-		StartTime:   startTime,
-		EndTime:     endTime,
-		ExactTotal:  exactTotal,
+		UserID:           userID,
+		APIKeyID:         apiKeyID,
+		AccountID:        accountID,
+		GroupID:          groupID,
+		Model:            model,
+		OpenAIFastBucket: openAIFastBucket,
+		RequestType:      requestType,
+		Stream:           stream,
+		BillingType:      billingType,
+		BillingMode:      billingMode,
+		StartTime:        startTime,
+		EndTime:          endTime,
+		ExactTotal:       exactTotal,
 	}
 
 	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
@@ -242,6 +249,12 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 
 	model := c.Query("model")
 	billingMode := strings.TrimSpace(c.Query("billing_mode"))
+	openAIFastBucket := strings.TrimSpace(c.Query("openai_fast"))
+	if !usagestats.IsValidOpenAIFastBucket(openAIFastBucket) {
+		response.BadRequest(c, "Invalid openai_fast value, use all, fast, or non_fast")
+		return
+	}
+	openAIFastBucket = usagestats.NormalizeOpenAIFastBucket(openAIFastBucket)
 
 	var requestType *int16
 	var stream *bool
@@ -312,23 +325,48 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 
 	// Build filters and call GetStatsWithFilters
 	filters := usagestats.UsageLogFilters{
-		UserID:      userID,
-		APIKeyID:    apiKeyID,
-		AccountID:   accountID,
-		GroupID:     groupID,
-		Model:       model,
-		RequestType: requestType,
-		Stream:      stream,
-		BillingType: billingType,
-		BillingMode: billingMode,
-		StartTime:   &startTime,
-		EndTime:     &endTime,
+		UserID:           userID,
+		APIKeyID:         apiKeyID,
+		AccountID:        accountID,
+		GroupID:          groupID,
+		Model:            model,
+		OpenAIFastBucket: openAIFastBucket,
+		RequestType:      requestType,
+		Stream:           stream,
+		BillingType:      billingType,
+		BillingMode:      billingMode,
+		StartTime:        &startTime,
+		EndTime:          &endTime,
 	}
 
 	stats, err := h.usageService.GetStatsWithFilters(c.Request.Context(), filters)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	if filters.OpenAIFastBucket == usagestats.OpenAIFastBucketAll {
+		fastFilters := filters
+		fastFilters.OpenAIFastBucket = usagestats.OpenAIFastBucketFast
+		fastStats, fastErr := h.usageService.GetStatsWithFilters(c.Request.Context(), fastFilters)
+		if fastErr != nil {
+			response.ErrorFrom(c, fastErr)
+			return
+		}
+		nonFastFilters := filters
+		nonFastFilters.OpenAIFastBucket = usagestats.OpenAIFastBucketNonFast
+		nonFastStats, nonFastErr := h.usageService.GetStatsWithFilters(c.Request.Context(), nonFastFilters)
+		if nonFastErr != nil {
+			response.ErrorFrom(c, nonFastErr)
+			return
+		}
+		fastStats.Endpoints = nil
+		fastStats.UpstreamEndpoints = nil
+		fastStats.EndpointPaths = nil
+		nonFastStats.Endpoints = nil
+		nonFastStats.UpstreamEndpoints = nil
+		nonFastStats.EndpointPaths = nil
+		stats.FastStats = fastStats
+		stats.NonFastStats = nonFastStats
 	}
 
 	response.Success(c, stats)

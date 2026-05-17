@@ -1317,6 +1317,47 @@
         </div>
       </div>
 
+      <!-- OpenAI /fast 参数透传开关（OAuth/API Key） -->
+      <div
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'apikey')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <label class="input-label mb-0">{{ t('admin.accounts.openai.fastPassthrough') }}</label>
+              <span
+                v-if="openaiFastPassthroughEnabled"
+                class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+              >
+                {{ t('admin.accounts.openai.fastPassthroughBadge') }}
+              </span>
+            </div>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t(openaiFastPassthroughEnabled ? 'admin.accounts.openai.fastPassthroughDescOn' : 'admin.accounts.openai.fastPassthroughDescOff') }}
+            </p>
+            <p v-if="openaiFastPassthroughEnabled" class="mt-1 text-xs text-amber-600 dark:text-amber-300">
+              {{ t('admin.accounts.openai.fastPassthroughWarning') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="openaiFastPassthroughEnabled = !openaiFastPassthroughEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openaiFastPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openaiFastPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- OpenAI Codex 图片生成桥接账号级覆盖 -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'apikey')"
@@ -2352,6 +2393,7 @@ const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
+const openaiFastPassthroughEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -2602,6 +2644,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/API Key)
   openaiPassthroughEnabled.value = false
+  openaiFastPassthroughEnabled.value = false
   openAICompactMode.value = 'auto'
   openAICompactModelMappings.value = []
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -2612,6 +2655,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   webSearchEmulationMode.value = 'default'
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
+    openaiFastPassthroughEnabled.value = extra?.openai_fast_passthrough_enabled === true
     openAICompactMode.value = (extra?.openai_compact_mode as OpenAICompactMode) || 'auto'
     const codexImageGenerationBridgeValue = typeof extra?.codex_image_generation_bridge === 'boolean'
       ? extra.codex_image_generation_bridge
@@ -3353,6 +3397,9 @@ const handleSubmit = async () => {
       updatePayload.load_factor = 0
     }
     updatePayload.auto_pause_on_expired = autoPauseOnExpired.value
+    if (props.account.platform === 'openai') {
+      updatePayload.openai_fast_passthrough_enabled = openaiFastPassthroughEnabled.value
+    }
 
     // For apikey type, handle credentials update
     if (props.account.type === 'apikey') {
@@ -3742,6 +3789,7 @@ const handleSubmit = async () => {
         delete newExtra.openai_passthrough
         delete newExtra.openai_oauth_passthrough
       }
+      newExtra.openai_fast_passthrough_enabled = openaiFastPassthroughEnabled.value === true
       if (openAICompactMode.value === 'auto') {
         delete newExtra.openai_compact_mode
       } else {

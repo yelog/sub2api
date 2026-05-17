@@ -129,6 +129,49 @@ func TestEvaluateOpenAIFastPolicy_ScopeFiltersOAuth(t *testing.T) {
 	require.Equal(t, BetaPolicyActionPass, action)
 }
 
+func TestApplyOpenAIFastPolicyToBody_AccountFastPassthroughAllowsPriority(t *testing.T) {
+	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra: map[string]any{
+			AccountExtraOpenAIFastPassthroughEnabled: true,
+		},
+	}
+
+	body := []byte(`{"model":"gpt-5.5","service_tier":"fast","messages":[]}`)
+	updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+	require.NoError(t, err)
+	require.Contains(t, string(updated), `"service_tier":"priority"`)
+}
+
+func TestApplyOpenAIFastPolicyToBody_AccountFastPassthroughDoesNotBypassBlock(t *testing.T) {
+	settings := &OpenAIFastPolicySettings{
+		Rules: []OpenAIFastPolicyRule{{
+			ServiceTier:  OpenAIFastTierPriority,
+			Action:       BetaPolicyActionBlock,
+			Scope:        BetaPolicyScopeAll,
+			ErrorMessage: "fast mode is blocked",
+		}},
+	}
+	svc := newOpenAIGatewayServiceWithSettings(t, settings)
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra: map[string]any{
+			AccountExtraOpenAIFastPassthroughEnabled: true,
+		},
+	}
+
+	body := []byte(`{"model":"gpt-5.5","service_tier":"fast"}`)
+	updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.5", body)
+	require.Error(t, err)
+	var blocked *OpenAIFastBlockedError
+	require.True(t, errors.As(err, &blocked))
+	require.Contains(t, blocked.Message, "blocked")
+	require.Equal(t, string(body), string(updated))
+}
+
 func TestApplyOpenAIFastPolicyToBody_FilterRemovesField(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}

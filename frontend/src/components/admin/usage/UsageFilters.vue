@@ -139,6 +139,17 @@
           <Select v-model="filters.billing_mode" :options="billingModeOptions" @change="emitChange" />
         </div>
 
+        <!-- OpenAI Fast Filter -->
+        <div class="w-full sm:w-auto sm:min-w-[180px]" data-test="openai-fast-filter">
+          <label class="input-label">{{ t('usage.openaiFastFilter') }}</label>
+          <Select
+            :model-value="filters.openai_fast || 'all'"
+            :options="openaiFastOptions"
+            @update:model-value="setOpenAIFastFilter"
+            @change="emitChange"
+          />
+        </div>
+
         <!-- Group Filter -->
         <div class="w-full sm:w-auto sm:min-w-[200px]">
           <label class="input-label">{{ t('admin.usage.group') }}</label>
@@ -245,7 +256,17 @@ const billingModeOptions = ref<SelectOption[]>([
   { value: 'image', label: t('admin.usage.billingModeImage') }
 ])
 
+const openaiFastOptions = ref<SelectOption[]>([
+  { value: 'all', label: t('usage.allOpenAIFast') },
+  { value: 'fast', label: t('usage.openaiFast') },
+  { value: 'non_fast', label: t('usage.openaiNonFast') }
+])
+
 const emitChange = () => emit('change')
+
+const setOpenAIFastFilter = (value: string | number | boolean | null) => {
+  filters.value.openai_fast = typeof value === 'string' && value ? value : 'all'
+}
 
 const debounceUserSearch = () => {
   if (userSearchTimeout) clearTimeout(userSearchTimeout)

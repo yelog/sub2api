@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import UsageView from '../UsageView.vue'
 
-const { list, getStats, getSnapshotV2, getById } = vi.hoisted(() => {
+const { list, getStats, getSnapshotV2, getModelStats, getById, exportList, saveAs } = vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
     getItem: vi.fn(() => null),
     setItem: vi.fn(),
@@ -14,7 +14,10 @@ const { list, getStats, getSnapshotV2, getById } = vi.hoisted(() => {
     list: vi.fn(),
     getStats: vi.fn(),
     getSnapshotV2: vi.fn(),
+    getModelStats: vi.fn(),
     getById: vi.fn(),
+    exportList: vi.fn(),
+    saveAs: vi.fn(),
   }
 })
 
@@ -40,6 +43,7 @@ vi.mock('@/api/admin', () => ({
     },
     dashboard: {
       getSnapshotV2,
+      getModelStats,
     },
     users: {
       getById,
@@ -49,8 +53,26 @@ vi.mock('@/api/admin', () => ({
 
 vi.mock('@/api/admin/usage', () => ({
   adminUsageAPI: {
-    list: vi.fn(),
+    list: exportList,
   },
+}))
+
+vi.mock('file-saver', () => ({
+  saveAs,
+}))
+
+vi.mock('xlsx', () => ({
+  utils: {
+    aoa_to_sheet: vi.fn((rows) => ({ rows })),
+    sheet_add_aoa: vi.fn((sheet, rows) => {
+      sheet.rows.push(...rows)
+    }),
+    book_new: vi.fn(() => ({ sheets: [] })),
+    book_append_sheet: vi.fn((book, sheet, name) => {
+      book.sheets.push({ sheet, name })
+    }),
+  },
+  write: vi.fn(() => new ArrayBuffer(0)),
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -84,6 +106,23 @@ vi.mock('vue-router', () => ({
 
 const AppLayoutStub = { template: '<div><slot /></div>' }
 const UsageFiltersStub = { template: '<div><slot name="after-reset" /></div>' }
+const UsageFiltersExportStub = {
+  props: ['modelValue'],
+  emits: ['update:modelValue', 'change', 'export'],
+  template: `
+    <div>
+      <button data-test="fast-filter" @click="setFast">fast</button>
+      <button data-test="export" @click="$emit('export')">export</button>
+      <slot name="after-reset" />
+    </div>
+  `,
+  methods: {
+    setFast() {
+      this.$emit('update:modelValue', { ...this.modelValue, openai_fast: 'fast' })
+      this.$emit('change')
+    },
+  },
+}
 const ModelDistributionChartStub = {
   props: ['metric'],
   emits: ['update:metric'],
@@ -111,7 +150,10 @@ describe('admin UsageView distribution metric toggles', () => {
     list.mockReset()
     getStats.mockReset()
     getSnapshotV2.mockReset()
+    getModelStats.mockReset()
     getById.mockReset()
+    exportList.mockReset()
+    saveAs.mockReset()
 
     list.mockResolvedValue({
       items: [],
@@ -133,6 +175,8 @@ describe('admin UsageView distribution metric toggles', () => {
       models: [],
       groups: [],
     })
+    getModelStats.mockResolvedValue({ models: [] })
+    exportList.mockResolvedValue({ items: [], total: 0, pages: 0 })
   })
 
   afterEach(() => {
@@ -192,5 +236,99 @@ describe('admin UsageView distribution metric toggles', () => {
     expect(modelChart.find('.metric').text()).toBe('actual_cost')
     expect(groupChart.find('.metric').text()).toBe('actual_cost')
     expect(getSnapshotV2).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('admin UsageView OpenAI Fast usage support', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    list.mockReset()
+    getStats.mockReset()
+    getSnapshotV2.mockReset()
+    getModelStats.mockReset()
+    getById.mockReset()
+    exportList.mockReset()
+    saveAs.mockReset()
+
+    list.mockResolvedValue({ items: [], total: 0, pages: 0 })
+    getStats.mockResolvedValue({
+      total_requests: 0,
+      total_input_tokens: 0,
+      total_output_tokens: 0,
+      total_cache_tokens: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      total_actual_cost: 0,
+      average_duration_ms: 0,
+    })
+    getSnapshotV2.mockResolvedValue({ trend: [], models: [], groups: [] })
+    getModelStats.mockResolvedValue({ models: [] })
+    exportList.mockResolvedValue({ items: [], total: 0, pages: 0 })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const mountUsageView = () => mount(UsageView, {
+    global: {
+      stubs: {
+        AppLayout: AppLayoutStub,
+        UsageStatsCards: true,
+        UsageFilters: UsageFiltersExportStub,
+        UsageTable: true,
+        UsageExportProgress: true,
+        UsageCleanupDialog: true,
+        UserBalanceHistoryModal: true,
+        Pagination: true,
+        Select: true,
+        DateRangePicker: true,
+        Icon: true,
+        TokenUsageTrend: true,
+        ModelDistributionChart: true,
+        GroupDistributionChart: true,
+        EndpointDistributionChart: true,
+      },
+    },
+  })
+
+  it('passes openai_fast to list, stats, and export requests', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+
+    await wrapper.find('[data-test="fast-filter"]').trigger('click')
+    await flushPromises()
+
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ openai_fast: 'fast' }), expect.anything())
+    expect(getStats).toHaveBeenLastCalledWith(expect.objectContaining({ openai_fast: 'fast' }))
+
+    await wrapper.find('[data-test="export"]').trigger('click')
+    await flushPromises()
+
+    expect(exportList).toHaveBeenCalledWith(expect.objectContaining({ openai_fast: 'fast' }), expect.anything())
+  })
+
+  it('exports a fast_bucket column derived from service_tier priority', async () => {
+    exportList.mockResolvedValueOnce({
+      total: 2,
+      pages: 1,
+      items: [
+        { request_id: 'fast-req', created_at: '2026-05-17T00:00:00Z', service_tier: 'priority', input_tokens: 1, output_tokens: 2, cache_read_tokens: 0, cache_creation_tokens: 0, duration_ms: 10, total_cost: 0.1, actual_cost: 0.1, account_rate_multiplier: 1 },
+        { request_id: 'normal-req', created_at: '2026-05-17T00:01:00Z', service_tier: null, input_tokens: 3, output_tokens: 4, cache_read_tokens: 0, cache_creation_tokens: 0, duration_ms: 20, total_cost: 0.2, actual_cost: 0.2, account_rate_multiplier: 1 },
+      ],
+    })
+
+    const wrapper = mountUsageView()
+    await flushPromises()
+    await wrapper.find('[data-test="export"]').trigger('click')
+    await flushPromises()
+
+    const xlsx = await import('xlsx')
+    const headerRows = vi.mocked(xlsx.utils.aoa_to_sheet).mock.calls[0][0] as unknown[][]
+    const exportedRows = vi.mocked(xlsx.utils.sheet_add_aoa).mock.calls[0][1] as unknown[][]
+    const fastBucketIndex = headerRows[0].indexOf('fast_bucket')
+    expect(fastBucketIndex).toBeGreaterThanOrEqual(0)
+    expect(exportedRows[0][fastBucketIndex]).toBe('fast')
+    expect(exportedRows[1][fastBucketIndex]).toBe('non_fast')
   })
 })

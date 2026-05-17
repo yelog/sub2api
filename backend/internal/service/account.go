@@ -16,6 +16,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
+const AccountExtraOpenAIFastPassthroughEnabled = "openai_fast_passthrough_enabled"
+
 type Account struct {
 	ID          int64
 	Name        string
@@ -89,6 +91,35 @@ func (a *Account) BillingRateMultiplier() float64 {
 		return 1.0
 	}
 	return *a.RateMultiplier
+}
+
+func (a *Account) OpenAIFastPassthroughEnabled() bool {
+	if a == nil || a.Platform != PlatformOpenAI || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra[AccountExtraOpenAIFastPassthroughEnabled].(bool)
+	return ok && enabled
+}
+
+func applyOpenAIFastPassthroughSetting(extra map[string]any, platform string, enabled *bool, defaultWhenNil *bool) map[string]any {
+	if platform != PlatformOpenAI {
+		if extra != nil {
+			delete(extra, AccountExtraOpenAIFastPassthroughEnabled)
+		}
+		return extra
+	}
+	value := false
+	if defaultWhenNil != nil {
+		value = *defaultWhenNil
+	}
+	if enabled != nil {
+		value = *enabled
+	}
+	if extra == nil {
+		extra = map[string]any{}
+	}
+	extra[AccountExtraOpenAIFastPassthroughEnabled] = value
+	return extra
 }
 
 func (a *Account) EffectiveLoadFactor() int {

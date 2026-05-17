@@ -5963,6 +5963,21 @@ func (s *OpenAIGatewayService) evaluateOpenAIFastPolicy(ctx context.Context, acc
 	if tier == "" {
 		return BetaPolicyActionPass, ""
 	}
+	if account != nil && account.OpenAIFastPassthroughEnabled() && tier == OpenAIFastTierPriority {
+		settings := openAIFastPolicySettingsFromContext(ctx)
+		if settings == nil {
+			fetched, err := s.settingService.GetOpenAIFastPolicySettings(ctx)
+			if err != nil || fetched == nil {
+				return BetaPolicyActionPass, ""
+			}
+			settings = fetched
+		}
+		action, errMsg := evaluateOpenAIFastPolicyWithSettings(settings, account, model, tier)
+		if action == BetaPolicyActionBlock {
+			return action, errMsg
+		}
+		return BetaPolicyActionPass, ""
+	}
 	settings := openAIFastPolicySettingsFromContext(ctx)
 	if settings == nil {
 		fetched, err := s.settingService.GetOpenAIFastPolicySettings(ctx)

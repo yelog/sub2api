@@ -8,6 +8,11 @@
         <p class="text-xs font-medium text-gray-500">{{ t('usage.totalRequests') }}</p>
         <p class="text-xl font-bold">{{ stats?.total_requests?.toLocaleString() || '0' }}</p>
         <p class="text-xs text-gray-400">{{ t('usage.inSelectedRange') }}</p>
+        <p v-if="stats?.fast_stats || stats?.non_fast_stats" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          <span class="text-amber-600 dark:text-amber-300">{{ t('usage.openaiFast') }} {{ (stats?.fast_stats?.total_requests || 0).toLocaleString() }}</span>
+          <span> / </span>
+          <span>{{ t('usage.openaiNonFast') }} {{ (stats?.non_fast_stats?.total_requests || 0).toLocaleString() }}</span>
+        </p>
       </div>
     </div>
     <div class="card p-4 flex items-center gap-3">

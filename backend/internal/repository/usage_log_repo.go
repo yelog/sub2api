@@ -132,6 +132,28 @@ func appendRawUsageLogModelQueryFilter(query string, args []any, model string) (
 	return query, args
 }
 
+func appendOpenAIFastBucketWhereCondition(conditions []string, bucket string) []string {
+	switch usagestats.NormalizeOpenAIFastBucket(bucket) {
+	case usagestats.OpenAIFastBucketFast:
+		return append(conditions, "service_tier = 'priority'")
+	case usagestats.OpenAIFastBucketNonFast:
+		return append(conditions, "(service_tier IS NULL OR service_tier != 'priority')")
+	default:
+		return conditions
+	}
+}
+
+func appendOpenAIFastBucketQueryFilter(query string, bucket string) string {
+	switch usagestats.NormalizeOpenAIFastBucket(bucket) {
+	case usagestats.OpenAIFastBucketFast:
+		return query + " AND service_tier = 'priority'"
+	case usagestats.OpenAIFastBucketNonFast:
+		return query + " AND (service_tier IS NULL OR service_tier != 'priority')"
+	default:
+		return query
+	}
+}
+
 type usageLogRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
@@ -2657,6 +2679,7 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 		args = append(args, filters.GroupID)
 	}
 	conditions, args = appendRawUsageLogModelWhereCondition(conditions, args, filters.Model)
+	conditions = appendOpenAIFastBucketWhereCondition(conditions, filters.OpenAIFastBucket)
 	conditions, args = appendRequestTypeOrStreamWhereCondition(conditions, args, filters.RequestType, filters.Stream)
 	if filters.BillingType != nil {
 		conditions = append(conditions, fmt.Sprintf("billing_type = $%d", len(args)+1))
@@ -3358,6 +3381,7 @@ func (r *usageLogRepository) GetStatsWithFilters(ctx context.Context, filters Us
 		args = append(args, filters.GroupID)
 	}
 	conditions, args = appendRawUsageLogModelWhereCondition(conditions, args, filters.Model)
+	conditions = appendOpenAIFastBucketWhereCondition(conditions, filters.OpenAIFastBucket)
 	conditions, args = appendRequestTypeOrStreamWhereCondition(conditions, args, filters.RequestType, filters.Stream)
 	if filters.BillingType != nil {
 		conditions = append(conditions, fmt.Sprintf("billing_type = $%d", len(args)+1))
@@ -3420,17 +3444,17 @@ func (r *usageLogRepository) GetStatsWithFilters(ctx context.Context, filters Us
 		end = *filters.EndTime
 	}
 
-	endpoints, endpointErr := r.GetEndpointStatsWithFilters(ctx, start, end, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType)
+	endpoints, endpointErr := r.getEndpointStatsByColumnWithFilters(ctx, "inbound_endpoint", start, end, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType, filters.OpenAIFastBucket)
 	if endpointErr != nil {
 		logger.LegacyPrintf("repository.usage_log", "GetEndpointStatsWithFilters failed in GetStatsWithFilters: %v", endpointErr)
 		endpoints = []EndpointStat{}
 	}
-	upstreamEndpoints, upstreamEndpointErr := r.GetUpstreamEndpointStatsWithFilters(ctx, start, end, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType)
+	upstreamEndpoints, upstreamEndpointErr := r.getEndpointStatsByColumnWithFilters(ctx, "upstream_endpoint", start, end, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType, filters.OpenAIFastBucket)
 	if upstreamEndpointErr != nil {
 		logger.LegacyPrintf("repository.usage_log", "GetUpstreamEndpointStatsWithFilters failed in GetStatsWithFilters: %v", upstreamEndpointErr)
 		upstreamEndpoints = []EndpointStat{}
 	}
-	endpointPaths, endpointPathErr := r.getEndpointPathStatsWithFilters(ctx, start, end, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType)
+	endpointPaths, endpointPathErr := r.getEndpointPathStatsWithFilters(ctx, start, end, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType, filters.OpenAIFastBucket)
 	if endpointPathErr != nil {
 		logger.LegacyPrintf("repository.usage_log", "getEndpointPathStatsWithFilters failed in GetStatsWithFilters: %v", endpointPathErr)
 		endpointPaths = []EndpointStat{}
@@ -3454,7 +3478,7 @@ type AccountUsageStatsResponse = usagestats.AccountUsageStatsResponse
 // EndpointStat represents endpoint usage statistics row.
 type EndpointStat = usagestats.EndpointStat
 
-func (r *usageLogRepository) getEndpointStatsByColumnWithFilters(ctx context.Context, endpointColumn string, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8) (results []EndpointStat, err error) {
+func (r *usageLogRepository) getEndpointStatsByColumnWithFilters(ctx context.Context, endpointColumn string, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8, openAIFastBucket ...string) (results []EndpointStat, err error) {
 	actualCostExpr := "COALESCE(SUM(actual_cost), 0) as actual_cost"
 	if accountID > 0 && userID == 0 && apiKeyID == 0 {
 		actualCostExpr = "COALESCE(SUM(COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1)), 0) as actual_cost"
@@ -3489,6 +3513,9 @@ func (r *usageLogRepository) getEndpointStatsByColumnWithFilters(ctx context.Con
 		args = append(args, groupID)
 	}
 	query, args = appendRawUsageLogModelQueryFilter(query, args, model)
+	if len(openAIFastBucket) > 0 {
+		query = appendOpenAIFastBucketQueryFilter(query, openAIFastBucket[0])
+	}
 	query, args = appendRequestTypeOrStreamQueryFilter(query, args, requestType, stream)
 	if billingType != nil {
 		query += fmt.Sprintf(" AND billing_type = $%d", len(args)+1)
@@ -3521,7 +3548,7 @@ func (r *usageLogRepository) getEndpointStatsByColumnWithFilters(ctx context.Con
 	return results, nil
 }
 
-func (r *usageLogRepository) getEndpointPathStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8) (results []EndpointStat, err error) {
+func (r *usageLogRepository) getEndpointPathStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8, openAIFastBucket ...string) (results []EndpointStat, err error) {
 	actualCostExpr := "COALESCE(SUM(actual_cost), 0) as actual_cost"
 	if accountID > 0 && userID == 0 && apiKeyID == 0 {
 		actualCostExpr = "COALESCE(SUM(COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1)), 0) as actual_cost"
@@ -3560,6 +3587,9 @@ func (r *usageLogRepository) getEndpointPathStatsWithFilters(ctx context.Context
 		args = append(args, groupID)
 	}
 	query, args = appendRawUsageLogModelQueryFilter(query, args, model)
+	if len(openAIFastBucket) > 0 {
+		query = appendOpenAIFastBucketQueryFilter(query, openAIFastBucket[0])
+	}
 	query, args = appendRequestTypeOrStreamQueryFilter(query, args, requestType, stream)
 	if billingType != nil {
 		query += fmt.Sprintf(" AND billing_type = $%d", len(args)+1)
